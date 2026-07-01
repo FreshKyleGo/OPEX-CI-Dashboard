@@ -2471,10 +2471,9 @@
           const row = item.row;
           const name = safeVal(row, hcCol.name).trim();
           const leader = safeVal(row, hcCol.leader).trim() || 'Unassigned';
-          if (name && name !== 'DUMMY ENTRY' && name !== '#N/A' && name !== '') {
-            const cleaned = cleanName(name);
-            if (cleaned && !map.has(cleaned)) {
-              map.set(cleaned, { name, leader, cleaned });
+          if (name && name !== 'DUMMY ENTRY' && name !== '#N/A' && name !== '' && !String(name).startsWith('#')) {
+            if (!map.has(name)) {
+              map.set(name, { name, leader, cleaned: cleanName(name) });
             }
           }
         });
