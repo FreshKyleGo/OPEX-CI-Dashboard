@@ -109,6 +109,8 @@
       let str = String(name).toLowerCase().trim();
       str = str.replace(/\b(mr|mrs|ms|miss|dr|prof)\.?\b/gi, '');
       str = str.replace(/\./g, ' ');
+      str = str.replace(/ß/g, 'ss');
+      str = str.replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue');
       return str.replace(/\s+/g, ' ').trim();
     };
 
@@ -404,7 +406,7 @@
         const r = trainingRows[i];
         if (!r || !r.length) continue;
         const name = g(r, tCol.name);
-        if (!name || String(name).trim() === '' || name === 'DUMMY ENTRY' || name === '#N/A') continue;
+        if (!name || String(name).trim() === '' || name === 'DUMMY ENTRY' || String(name).startsWith('#')) continue;
         const cr = Array(77).fill(null);
         cr[65]=g(r,tCol.leader); cr[66]=g(r,tCol.name); cr[67]=g(r,tCol.empId);
         cr[68]=g(r,tCol.email); cr[69]=g(r,tCol.path); cr[70]=g(r,tCol.hireDate);
@@ -2015,17 +2017,17 @@
 
       const col = useMemo(() => {
         return {
-          leader: findColIndex(headers, "Leader", 65, 76),
-          name: findColIndex(headers, "Employee Name", 65, 76),
-          empId: findColIndex(headers, "Employee ID", 65, 76),
-          email: findColIndex(headers, "Email", 65, 76),
-          path: findColIndex(headers, "Path Title", 65, 76),
-          hireDate: findColIndex(headers, "Hire Date", 65, 76),
-          enrollDate: findColIndex(headers, "Learner Enrollment Date", 65, 76),
-          startDate: findColIndex(headers, "Learner Start Date", 65, 76),
-          status: findColIndex(headers, "Learner Status", 65, 76),
-          progress: findColIndex(headers, "Progress", 65, 76),
-          completionDate: findColIndex(headers, "Learner Completion Date", 65, 76),
+          leader: findColIndex(headers, "Leader", 65, 77),
+          name: findColIndex(headers, "Employee Name", 65, 77),
+          empId: findColIndex(headers, "Employee ID", 65, 77),
+          email: findColIndex(headers, "Email", 65, 77),
+          path: findColIndex(headers, "Path Title", 65, 77),
+          hireDate: findColIndex(headers, "Hire Date", 65, 77),
+          enrollDate: findColIndex(headers, "Learner Enrollment Date", 65, 77),
+          startDate: findColIndex(headers, "Learner Start Date", 65, 77),
+          status: findColIndex(headers, "Learner Status", 65, 77),
+          progress: findColIndex(headers, "Progress", 65, 77),
+          completionDate: findColIndex(headers, "Learner Completion Date", 65, 77),
         };
       }, [headers]);
 
@@ -2035,7 +2037,10 @@
           .filter(item => {
             const row = item.row;
             const name = safeVal(row, col.name);
-            return name && name !== 'DUMMY ENTRY' && name !== '#N/A' && name.trim() !== '';
+            if (!name || name.trim() === '' || name === 'DUMMY ENTRY' || name === '#N/A') return false;
+            // Also filter out formula error strings
+            if (String(name).startsWith('#')) return false;
+            return true;
           })
           .map(item => {
             const row = item.row;
