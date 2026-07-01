@@ -329,7 +329,8 @@
         assignee: findColIndex(jH, "Assignee"), solution: findColIndex(jH, "Solution"),
         blockerCategory: findColIndex(jH, "Blocker Category"),
         stageGate: findColIndex(jH, "Stage Gate") !== -1 ? findColIndex(jH, "Stage Gate") : findColIndex(jH, "Custom field (Stage Gate)"),
-        caseLabelFlag: findColIndex(jH, "Case Label"), caseLabelValue: findColIndex(jH, "Concise Description")
+        caseLabelFlag: findColIndex(jH, "Case Label") !== -1 ? findColIndex(jH, "Case Label") : 29,
+        caseLabelValue: findColIndex(jH, "Concise Description") !== -1 ? findColIndex(jH, "Concise Description") : 30
       };
 
       const hCol = {
