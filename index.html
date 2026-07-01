@@ -518,36 +518,37 @@
 
       const [data, setData] = useState(initialMockData);
 
-      // 🔄 Auto-load Google Sheet URLs if saved in localStorage on startup
+      // 🔄 Auto-load Google Sheet URLs — hardcoded defaults for all users
+      const DEFAULT_JIRA_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQzylxdGAnbrbVrz8-bCmgMP3NZhnUhih6eYyxfZc-bRJLvBx6EIq0_xLmbal_zG2XKZFY261yaoUJ_/pub?gid=454833638&single=true&output=csv';
+      const DEFAULT_HC_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQzylxdGAnbrbVrz8-bCmgMP3NZhnUhih6eYyxfZc-bRJLvBx6EIq0_xLmbal_zG2XKZFY261yaoUJ_/pub?gid=1097149421&single=true&output=csv';
+      const DEFAULT_TR_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQzylxdGAnbrbVrz8-bCmgMP3NZhnUhih6eYyxfZc-bRJLvBx6EIq0_xLmbal_zG2XKZFY261yaoUJ_/pub?gid=1702741928&single=true&output=csv';
+
       useEffect(() => {
-        const savedJira = localStorage.getItem('hf_opex_jira_url');
-        const savedHc = localStorage.getItem('hf_opex_hc_url');
-        const savedTr = localStorage.getItem('hf_opex_tr_url');
-        if (savedJira || savedHc || savedTr) {
-          if (savedJira) setGoogleUrlJira(savedJira);
-          if (savedHc) setGoogleUrlHc(savedHc);
-          if (savedTr) setGoogleUrlTr(savedTr);
-          // Auto-fetch using saved values directly
-          const autoFetch = async () => {
-            setLoading(true);
-            setStatusMessage('Auto-connecting to Google Sheets...');
-            try {
-              const [jiraRows, hcRows, trRows] = await Promise.all([
-                savedJira ? fetchCsv(savedJira) : Promise.resolve(null),
-                savedHc ? fetchCsv(savedHc) : Promise.resolve(null),
-                savedTr ? fetchCsv(savedTr) : Promise.resolve(null)
-              ]);
-              const sheetsMap = {};
-              if (jiraRows) sheetsMap["Database Jira"] = jiraRows;
-              if (hcRows) sheetsMap["Headcount Tracker"] = hcRows;
-              if (trRows) sheetsMap["White Belt Training"] = trRows;
-              const reconciled = reconcileSpreadsheets(sheetsMap);
-              if (reconciled) { setData(reconciled); setSyncSource('Google Sheets (3-Tab Live Sync)'); setStatusMessage('🟢 Auto-synced!'); }
-            } catch(e) { setStatusMessage('🔴 Auto-sync failed: ' + e.message); }
-            finally { setLoading(false); }
-          };
-          autoFetch();
-        }
+        const savedJira = localStorage.getItem('hf_opex_jira_url') || DEFAULT_JIRA_URL;
+        const savedHc = localStorage.getItem('hf_opex_hc_url') || DEFAULT_HC_URL;
+        const savedTr = localStorage.getItem('hf_opex_tr_url') || DEFAULT_TR_URL;
+        if (savedJira) setGoogleUrlJira(savedJira);
+        if (savedHc) setGoogleUrlHc(savedHc);
+        if (savedTr) setGoogleUrlTr(savedTr);
+        const autoFetch = async () => {
+          setLoading(true);
+          setStatusMessage('Auto-connecting to Google Sheets...');
+          try {
+            const [jiraRows, hcRows, trRows] = await Promise.all([
+              savedJira ? fetchCsv(savedJira) : Promise.resolve(null),
+              savedHc ? fetchCsv(savedHc) : Promise.resolve(null),
+              savedTr ? fetchCsv(savedTr) : Promise.resolve(null)
+            ]);
+            const sheetsMap = {};
+            if (jiraRows) sheetsMap["Database Jira"] = jiraRows;
+            if (hcRows) sheetsMap["Headcount Tracker"] = hcRows;
+            if (trRows) sheetsMap["White Belt Training"] = trRows;
+            const reconciled = reconcileSpreadsheets(sheetsMap);
+            if (reconciled) { setData(reconciled); setSyncSource('Google Sheets (3-Tab Live Sync)'); setStatusMessage('🟢 Auto-synced!'); }
+          } catch(e) { setStatusMessage('🔴 Auto-sync failed: ' + e.message); }
+          finally { setLoading(false); }
+        };
+        autoFetch();
       }, []);
 
       // Parser for copy-pasted Tab Separated Values (TSV) from Sheets / Excel
