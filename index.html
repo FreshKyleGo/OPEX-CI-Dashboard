@@ -1119,8 +1119,8 @@
           if (issueIdVal === undefined || issueIdVal === null || String(issueIdVal).trim() === '') {
             return false;
           }
-          const deptVal = (row[colIndex.dept] || "").toString().trim();
-          if (!deptVal || deptVal === '' || deptVal.toLowerCase() === "unassigned" || deptVal.toLowerCase().includes("hr software support")) return false;
+          const deptVal = (row[colIndex.dept] || "").toString().replace(/\s+/g, ' ').trim();
+          if (!deptVal || deptVal === '' || deptVal === '—' || deptVal === '-' || deptVal.toLowerCase() === "unassigned" || deptVal.toLowerCase().includes("hr software support")) return false;
           if (!row[colIndex.summary] && !row[colIndex.issueKey]) return false;
           return true;
         }).map(item => {
@@ -2486,8 +2486,8 @@
           if (issueIdVal === undefined || issueIdVal === null || String(issueIdVal).trim() === '') {
             return false;
           }
-          const deptVal = (row[opexCol.dept] || "").toString().trim();
-          if (!deptVal || deptVal.toLowerCase() === "unassigned" || deptVal.toLowerCase().includes("hr software support")) return false;
+          const deptVal = (row[opexCol.dept] || "").toString().replace(/\s+/g, ' ').trim();
+          if (!deptVal || deptVal === '' || deptVal === '—' || deptVal === '-' || deptVal.toLowerCase() === "unassigned" || deptVal.toLowerCase().includes("hr software support")) return false;
           return true;
         }).map(item => {
           const row = item.row;
