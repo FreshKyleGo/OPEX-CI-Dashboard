@@ -675,7 +675,7 @@
     function App() {
       const [view, setView] = useState('opex');
       const [integrationOpen, setIntegrationOpen] = useState(false);
-      const [integrationTab, setIntegrationTab] = useState('copypaste');
+      const [integrationTab, setIntegrationTab] = useState('googlesheets');
       const [pasteMode, setPasteMode] = useState('consolidated');
       const [syncSource, setSyncSource] = useState('Default Mock Database');
       const [googleUrl, setGoogleUrl] = useState('');
@@ -2402,8 +2402,6 @@
 
         if (editingItem) {
           updateItem(editingItem.index_, updatedRow);
-        } else {
-          insertItem(undefined, updatedRow);
         }
         setIsModalOpen(false);
       };
@@ -2419,9 +2417,6 @@
               <p className="text-sm text-slate-500 font-semibold uppercase tracking-wider mt-1">Lean Six Sigma White Belt Training</p>
             </div>
             <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
-              <button onClick={openAddModal} className="bg-[#062115] hover:bg-[#0c3120] text-white flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider shadow-sm transition-all">
-                <Icon name="Plus" className="w-4 h-4 text-[#91c13e]" /> Add Learner
-              </button>
               <select value={leaderFilter} onChange={e => setLeaderFilter(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-slate-700 outline-none focus:ring-2 focus:ring-[#91c13e] cursor-pointer">
                 <option value="All">All Leaders</option>
                 {leadersList.filter(l => l !== 'All').map(l => <option key={l} value={l}>{l}</option>)}
@@ -2598,7 +2593,7 @@
                 <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-slate-50 shrink-0">
                   <div>
                     <h3 className="text-lg font-black text-[#062115] tracking-tight">
-                      {editingItem ? 'Edit Learner Profile' : 'Add New Learner'}
+                      {editingItem ? 'Edit Learner Profile' : 'Edit Learner Profile'}
                     </h3>
                     <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-0.5">Enterprise Standings Verification</p>
                   </div>
