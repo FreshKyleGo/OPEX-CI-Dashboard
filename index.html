@@ -308,359 +308,112 @@
         return found ? sheetsMap[found] : null;
       };
 
-      let jiraRows = [];
-      let headcountRows = [];
-      let trainingRows = [];
-
-      // Smart Roster Split Engine: Treat as unified Canvas Source if sheet name matches or if it contains over 50 columns
-      let consolidatedSheet = findSheet(["canvas source", "consolidated", "master", "unified"]);
-      if (!consolidatedSheet) {
-        const firstSheetName = sheetNames[0];
-        const possibleGrid = sheetsMap[firstSheetName];
-        if (possibleGrid && possibleGrid[0] && possibleGrid[0].length >= 50) {
-          consolidatedSheet = possibleGrid;
-        }
-      }
-
-      if (consolidatedSheet && consolidatedSheet.length > 1) {
-        // Split the consolidated row slices back into distinct functional tables
-        consolidatedSheet.forEach(row => {
-          const jiraSlice = row.slice(0, 31);
-          const hcSlice = row.slice(31, 65);
-          const trSlice = row.slice(65, 77);
-          const isNotEmpty = (arr) => arr.some(cell => cell !== null && cell !== undefined && String(cell).trim() !== '');
-          if (isNotEmpty(jiraSlice)) jiraRows.push(jiraSlice);
-          if (isNotEmpty(hcSlice)) headcountRows.push(hcSlice);
-          if (isNotEmpty(trSlice)) trainingRows.push(trSlice);
-        });
-      } else {
-        // Default: Read distinct tabs/worksheets directly
-        jiraRows = findSheet(["jira", "database"]) || sheetsMap[sheetNames[0]] || [];
-        headcountRows = findSheet(["headcount", "personnel", "staff"]) || sheetsMap[sheetNames[1]] || [];
-        trainingRows = findSheet(["training", "lss", "six sigma", "white belt"]) || sheetsMap[sheetNames[2]] || [];
-      }
+      const jiraRows = findSheet(["jira", "database"]) || sheetsMap[sheetNames[0]] || [];
+      const headcountRows = findSheet(["headcount", "personnel", "staff", "linked"]) || sheetsMap[sheetNames[1]] || [];
+      const trainingRows = findSheet(["training", "lss", "six sigma", "white belt"]) || sheetsMap[sheetNames[2]] || [];
 
       if (!jiraRows.length && !headcountRows.length && !trainingRows.length) return null;
 
-      const jiraHeaders = jiraRows[0] || [];
-      const hcHeaders = headcountRows[0] || [];
-      const trHeaders = trainingRows[0] || [];
+      const jH = jiraRows[0] || [];
+      const hH = headcountRows[0] || [];
+      const tH = trainingRows[0] || [];
 
-      // Dynamic Header Mapping Identifiers
-      const colJira = {
-        issueKey: findColIndex(jiraHeaders, "Issue key"),
-        issueId: findColIndex(jiraHeaders, "Issue id"),
-        summary: findColIndex(jiraHeaders, "Summary"),
-        reporter: findColIndex(jiraHeaders, "Reporter"),
-        dept: findColIndex(jiraHeaders, "Components"),
-        status: findColIndex(jiraHeaders, "Status"),
-        description: findColIndex(jiraHeaders, "Description"),
-        created: findColIndex(jiraHeaders, "Created"),
-        delayed: findColIndex(jiraHeaders, "Delayed?"),
-        savedHrs: findColIndex(jiraHeaders, "Saved / Year (hrs)"),
-        savedFte: findColIndex(jiraHeaders, "Saved / Year (FTE)"),
-        effectiveSavings: findColIndex(jiraHeaders, "Effective Savings"),
-        totalCount: findColIndex(jiraHeaders, "Total count"),
-        startDate: findColIndex(jiraHeaders, "Start Date"),
-        actualEnd: findColIndex(jiraHeaders, "End Date"),
-        plannedEnd: findColIndex(jiraHeaders, "Planned End Date"),
-        businessImpact: findColIndex(jiraHeaders, "Business impact"),
-        customerImpact: findColIndex(jiraHeaders, "Customer impact"),
-        assignee: findColIndex(jiraHeaders, "Assignee"),
-        solution: findColIndex(jiraHeaders, "Solution"),
-        blockerCategory: findColIndex(jiraHeaders, "Blocker Category"),
-        stageGate: findColIndex(jiraHeaders, "Stage Gate") !== -1 ? findColIndex(jiraHeaders, "Stage Gate") : findColIndex(jiraHeaders, "Custom field (Stage Gate)"),
-        caseLabelFlag: findColIndex(jiraHeaders, "Case Label"),
-        caseLabelValue: findColIndex(jiraHeaders, "Concise Description")
+      const jCol = {
+        issueKey: findColIndex(jH, "Issue key"), issueId: findColIndex(jH, "Issue id"),
+        summary: findColIndex(jH, "Summary"), reporter: findColIndex(jH, "Reporter"),
+        dept: findColIndex(jH, "Components"), status: findColIndex(jH, "Status"),
+        description: findColIndex(jH, "Description"), created: findColIndex(jH, "Created"),
+        effectiveSavings: findColIndex(jH, "Effective Savings"), totalCount: findColIndex(jH, "Total count"),
+        startDate: findColIndex(jH, "Start Date") !== -1 ? findColIndex(jH, "Start Date") : findColIndex(jH, "Start date"),
+        actualEnd: findColIndex(jH, "End Date"), plannedEnd: findColIndex(jH, "Planned End Date"),
+        businessImpact: findColIndex(jH, "Business impact"), customerImpact: findColIndex(jH, "Customer impact"),
+        assignee: findColIndex(jH, "Assignee"), solution: findColIndex(jH, "Solution"),
+        blockerCategory: findColIndex(jH, "Blocker Category"),
+        stageGate: findColIndex(jH, "Stage Gate") !== -1 ? findColIndex(jH, "Stage Gate") : findColIndex(jH, "Custom field (Stage Gate)"),
+        caseLabelFlag: findColIndex(jH, "Case Label"), caseLabelValue: findColIndex(jH, "Concise Description")
       };
 
-      const colHc = {
-        leader: findColIndex(hcHeaders, "Leader"),
-        name: findColIndex(hcHeaders, "Full Legal Name"),
-        status: findColIndex(hcHeaders, "Status"),
-        workerType: findColIndex(hcHeaders, "Worker Type"),
-        jobFamily: findColIndex(hcHeaders, "Job Family"),
-        level: findColIndex(hcHeaders, "Management Level"),
-        location: findColIndex(hcHeaders, "Location"),
-        country: findColIndex(hcHeaders, "Country"),
-        tribe: findColIndex(hcHeaders, "Department/Tribe"),
-        empId: findColIndex(hcHeaders, "Employee ID"),
-        hireDate: findColIndex(hcHeaders, "Hire Date")
+      const hCol = {
+        leader: findColIndex(hH, "Leader"), name: findColIndex(hH, "Full Legal Name"),
+        status: findColIndex(hH, "Status"), workerType: findColIndex(hH, "Worker Type"),
+        jobFamily: findColIndex(hH, "Job Family"), level: findColIndex(hH, "Management Level"),
+        location: findColIndex(hH, "Location"), country: findColIndex(hH, "Country"),
+        tribe: findColIndex(hH, "Department/Tribe"), empId: findColIndex(hH, "Employee ID"),
+        hireDate: findColIndex(hH, "Hire Date")
       };
 
-      const colTr = {
-        leader: findColIndex(trHeaders, "Leader"),
-        name: findColIndex(trHeaders, "Employee Name"),
-        empId: findColIndex(trHeaders, "Employee ID"),
-        email: findColIndex(trHeaders, "Email"),
-        path: findColIndex(trHeaders, "Path Title"),
-        hireDate: findColIndex(trHeaders, "Hire Date"),
-        enrollDate: findColIndex(trHeaders, "Learner Enrollment Date"),
-        startDate: findColIndex(trHeaders, "Learner Start Date"),
-        status: findColIndex(trHeaders, "Learner Status"),
-        progress: findColIndex(trHeaders, "Progress"),
-        completionDate: findColIndex(trHeaders, "Learner Completion Date")
+      const tCol = {
+        leader: findColIndex(tH, "Leader"), name: findColIndex(tH, "Employee Name"),
+        empId: findColIndex(tH, "Employee ID"), email: findColIndex(tH, "Email"),
+        path: findColIndex(tH, "Path Title"), hireDate: findColIndex(tH, "Hire Date"),
+        enrollDate: findColIndex(tH, "Learner Enrollment Date"), startDate: findColIndex(tH, "Learner Start Date"),
+        status: findColIndex(tH, "Learner Status"), progress: findColIndex(tH, "Progress"),
+        completionDate: findColIndex(tH, "Learner Completion Date")
       };
 
-      const consolidatedHeaders = Array(77).fill(null);
-      consolidatedHeaders[0] = "Issue key";
-      consolidatedHeaders[1] = "Issue id";
-      consolidatedHeaders[2] = "Summary";
-      consolidatedHeaders[3] = "Reporter";
-      consolidatedHeaders[4] = "Components";
-      consolidatedHeaders[5] = "Status";
-      consolidatedHeaders[6] = "Description";
-      consolidatedHeaders[7] = "Created";
-      consolidatedHeaders[8] = "Delayed?";
-      consolidatedHeaders[9] = "Saved / Year (hrs)";
-      consolidatedHeaders[10] = "Saved / Year (FTE)";
-      consolidatedHeaders[11] = "Effective Savings";
-      consolidatedHeaders[12] = "Total count";
-      consolidatedHeaders[13] = "Start Date";
-      consolidatedHeaders[14] = "End Date";
-      consolidatedHeaders[15] = "Planned End Date";
-      consolidatedHeaders[16] = "Business impact";
-      consolidatedHeaders[17] = "Customer impact";
-      consolidatedHeaders[18] = "Assignee";
-      consolidatedHeaders[19] = "Solution";
-      consolidatedHeaders[20] = "Blocker Category";
-      consolidatedHeaders[21] = "Stage Gate";
-      consolidatedHeaders[22] = "Case Label";
-      consolidatedHeaders[23] = "Concise Description";
+      const cHdr = Array(77).fill(null);
+      cHdr[0]="Issue key"; cHdr[1]="Issue id"; cHdr[2]="Summary"; cHdr[3]="Reporter";
+      cHdr[4]="Components"; cHdr[5]="Status"; cHdr[6]="Description"; cHdr[7]="Created";
+      cHdr[11]="Effective Savings"; cHdr[12]="Total count"; cHdr[13]="Start Date";
+      cHdr[14]="End Date"; cHdr[15]="Planned End Date"; cHdr[16]="Business impact";
+      cHdr[17]="Customer impact"; cHdr[18]="Assignee"; cHdr[19]="Solution";
+      cHdr[20]="Blocker Category"; cHdr[21]="Stage Gate"; cHdr[22]="Case Label"; cHdr[23]="Concise Description";
+      cHdr[31]="Leader"; cHdr[32]="Full Legal Name"; cHdr[33]="Status"; cHdr[34]="Worker Type";
+      cHdr[35]="Job Family"; cHdr[36]="Management Level"; cHdr[37]="Location"; cHdr[38]="Country";
+      cHdr[39]="Department/Tribe"; cHdr[40]="Employee ID"; cHdr[41]="Hire Date";
+      cHdr[65]="Leader"; cHdr[66]="Employee Name"; cHdr[67]="Employee ID"; cHdr[68]="Email";
+      cHdr[69]="Path Title"; cHdr[70]="Hire Date"; cHdr[71]="Learner Enrollment Date";
+      cHdr[72]="Learner Start Date"; cHdr[73]="Learner Status"; cHdr[74]="Progress"; cHdr[75]="Learner Completion Date";
 
-      consolidatedHeaders[31] = "Leader";
-      consolidatedHeaders[32] = "Full Legal Name";
-      consolidatedHeaders[33] = "Status";
-      consolidatedHeaders[34] = "Worker Type";
-      consolidatedHeaders[35] = "Job Family";
-      consolidatedHeaders[36] = "Management Level";
-      consolidatedHeaders[37] = "Location";
-      consolidatedHeaders[38] = "Country";
-      consolidatedHeaders[39] = "Department/Tribe";
-      consolidatedHeaders[40] = "Employee ID";
-      consolidatedHeaders[41] = "Hire Date";
+      const g = (row, ci) => (ci !== undefined && ci !== -1 && ci < row.length) ? row[ci] : null;
+      const out = [{ row: cHdr, index_: 0 }];
+      let idx = 1;
 
-      consolidatedHeaders[65] = "Leader";
-      consolidatedHeaders[66] = "Employee Name";
-      consolidatedHeaders[67] = "Employee ID";
-      consolidatedHeaders[68] = "Email";
-      consolidatedHeaders[69] = "Path Title";
-      consolidatedHeaders[70] = "Hire Date";
-      consolidatedHeaders[71] = "Learner Enrollment Date";
-      consolidatedHeaders[72] = "Learner Start Date";
-      consolidatedHeaders[73] = "Learner Status";
-      consolidatedHeaders[74] = "Progress";
-      consolidatedHeaders[75] = "Learner Completion Date";
-
-      const finalRows = [];
-      const matchedHcIndices = new Set();
-      const matchedTrIndices = new Set();
-
-      // Align from Jira Perspective
       for (let i = 1; i < jiraRows.length; i++) {
-        const jRow = jiraRows[i];
-        if (!jRow || jRow.length === 0) continue;
-        const reporterVal = jRow[colJira.reporter] || '';
-        const issueIdVal = colJira.issueId !== -1 ? (jRow[colJira.issueId] || '') : '';
-        if (!issueIdVal && !reporterVal) continue;
-
-        const consolidatedRow = Array(77).fill(null);
-        Object.entries(colJira).forEach(([key, colIdx]) => {
-          if (colIdx !== -1 && colIdx < jRow.length) {
-            let val = jRow[colIdx];
-            if (key === 'issueKey') consolidatedRow[0] = val;
-            else if (key === 'issueId') consolidatedRow[1] = val;
-            else if (key === 'summary') consolidatedRow[2] = val;
-            else if (key === 'reporter') consolidatedRow[3] = val;
-            else if (key === 'dept') consolidatedRow[4] = val;
-            else if (key === 'status') consolidatedRow[5] = val;
-            else if (key === 'description') consolidatedRow[6] = val;
-            else if (key === 'created') consolidatedRow[7] = val;
-            else if (key === 'delayed') consolidatedRow[8] = val;
-            else if (key === 'savedHrs') consolidatedRow[9] = val;
-            else if (key === 'savedFte') consolidatedRow[10] = val;
-            else if (key === 'effectiveSavings') consolidatedRow[11] = val;
-            else if (key === 'totalCount') consolidatedRow[12] = val;
-            else if (key === 'startDate') consolidatedRow[13] = val;
-            else if (key === 'actualEnd') consolidatedRow[14] = val;
-            else if (key === 'plannedEnd') consolidatedRow[15] = val;
-            else if (key === 'businessImpact') consolidatedRow[16] = val;
-            else if (key === 'customerImpact') consolidatedRow[17] = val;
-            else if (key === 'assignee') consolidatedRow[18] = val;
-            else if (key === 'solution') consolidatedRow[19] = val;
-            else if (key === 'blockerCategory') consolidatedRow[20] = val;
-            else if (key === 'stageGate') consolidatedRow[21] = val;
-            else if (key === 'caseLabelFlag') consolidatedRow[29] = val;
-            else if (key === 'caseLabelValue') consolidatedRow[30] = val;
-          }
-        });
-
-        // Find Headcount Record Match
-        let foundHcIdx = -1;
-        for (let h = 1; h < headcountRows.length; h++) {
-          const hcRow = headcountRows[h];
-          if (!hcRow) continue;
-          const hcName = hcRow[colHc.name] || '';
-          if (matchNames(reporterVal, hcName)) {
-            foundHcIdx = h;
-            matchedHcIndices.add(h);
-            break;
-          }
-        }
-
-        if (foundHcIdx !== -1) {
-          const hcRow = headcountRows[foundHcIdx];
-          Object.entries(colHc).forEach(([key, colIdx]) => {
-            if (colIdx !== -1 && colIdx < hcRow.length) {
-              let val = hcRow[colIdx];
-              if (key === 'leader') consolidatedRow[31] = val;
-              else if (key === 'name') consolidatedRow[32] = val;
-              else if (key === 'status') consolidatedRow[33] = val;
-              else if (key === 'workerType') consolidatedRow[34] = val;
-              else if (key === 'jobFamily') consolidatedRow[35] = val;
-              else if (key === 'level') consolidatedRow[36] = val;
-              else if (key === 'location') consolidatedRow[37] = val;
-              else if (key === 'country') consolidatedRow[38] = val;
-              else if (key === 'tribe') consolidatedRow[39] = val;
-              else if (key === 'empId') consolidatedRow[40] = val;
-              else if (key === 'hireDate') consolidatedRow[41] = val;
-            }
-          });
-        }
-
-        // Find Training Record Match
-        let foundTrIdx = -1;
-        for (let t = 1; t < trainingRows.length; t++) {
-          const trRow = trainingRows[t];
-          if (!trRow) continue;
-          const trName = trRow[colTr.name] || '';
-          if (matchNames(reporterVal, trName)) {
-            foundTrIdx = t;
-            matchedTrIndices.add(t);
-            break;
-          }
-        }
-
-        if (foundTrIdx !== -1) {
-          const trRow = trainingRows[foundTrIdx];
-          Object.entries(colTr).forEach(([key, colIdx]) => {
-            if (colIdx !== -1 && colIdx < trRow.length) {
-              let val = trRow[colIdx];
-              if (key === 'leader') consolidatedRow[65] = val;
-              else if (key === 'name') consolidatedRow[66] = val;
-              else if (key === 'empId') consolidatedRow[67] = val;
-              else if (key === 'email') consolidatedRow[68] = val;
-              else if (key === 'path') consolidatedRow[69] = val;
-              else if (key === 'hireDate') consolidatedRow[70] = val;
-              else if (key === 'enrollDate') consolidatedRow[71] = val;
-              else if (key === 'startDate') consolidatedRow[72] = val;
-              else if (key === 'status') consolidatedRow[73] = val;
-              else if (key === 'progress') consolidatedRow[74] = val;
-              else if (key === 'completionDate') consolidatedRow[75] = val;
-            }
-          });
-        }
-
-        finalRows.push(consolidatedRow);
+        const r = jiraRows[i];
+        if (!r || !r.length) continue;
+        const issueId = g(r, jCol.issueId);
+        if (!issueId || String(issueId).trim() === '') continue;
+        const cr = Array(77).fill(null);
+        cr[0]=g(r,jCol.issueKey); cr[1]=g(r,jCol.issueId); cr[2]=g(r,jCol.summary);
+        cr[3]=g(r,jCol.reporter); cr[4]=g(r,jCol.dept); cr[5]=g(r,jCol.status);
+        cr[6]=g(r,jCol.description); cr[7]=g(r,jCol.created);
+        cr[11]=g(r,jCol.effectiveSavings); cr[12]=g(r,jCol.totalCount);
+        cr[13]=g(r,jCol.startDate); cr[14]=g(r,jCol.actualEnd); cr[15]=g(r,jCol.plannedEnd);
+        cr[16]=g(r,jCol.businessImpact); cr[17]=g(r,jCol.customerImpact);
+        cr[18]=g(r,jCol.assignee); cr[19]=g(r,jCol.solution);
+        cr[20]=g(r,jCol.blockerCategory); cr[21]=g(r,jCol.stageGate);
+        cr[22]=g(r,jCol.caseLabelFlag); cr[23]=g(r,jCol.caseLabelValue);
+        out.push({ row: cr, index_: idx++ });
       }
 
-      // Incorporate unmatched headcount rows
-      for (let h = 1; h < headcountRows.length; h++) {
-        if (matchedHcIndices.has(h)) continue;
-        const hcRow = headcountRows[h];
-        if (!hcRow || hcRow.length === 0) continue;
-        const hcName = hcRow[colHc.name] || '';
-        if (!hcName || hcName === 'DUMMY ENTRY') continue;
-
-        const consolidatedRow = Array(77).fill(null);
-        Object.entries(colHc).forEach(([key, colIdx]) => {
-          if (colIdx !== -1 && colIdx < hcRow.length) {
-            let val = hcRow[colIdx];
-            if (key === 'leader') consolidatedRow[31] = val;
-            else if (key === 'name') consolidatedRow[32] = val;
-            else if (key === 'status') consolidatedRow[33] = val;
-            else if (key === 'workerType') consolidatedRow[34] = val;
-            else if (key === 'jobFamily') consolidatedRow[35] = val;
-            else if (key === 'level') consolidatedRow[36] = val;
-            else if (key === 'location') consolidatedRow[37] = val;
-            else if (key === 'country') consolidatedRow[38] = val;
-            else if (key === 'tribe') consolidatedRow[39] = val;
-            else if (key === 'empId') consolidatedRow[40] = val;
-            else if (key === 'hireDate') consolidatedRow[41] = val;
-          }
-        });
-
-        // Match with unmatched Training records
-        let foundTrIdx = -1;
-        for (let t = 1; t < trainingRows.length; t++) {
-          const trRow = trainingRows[t];
-          if (!trRow) continue;
-          const trName = trRow[colTr.name] || '';
-          if (matchNames(hcName, trName)) {
-            foundTrIdx = t;
-            matchedTrIndices.add(t);
-            break;
-          }
-        }
-
-        if (foundTrIdx !== -1) {
-          const trRow = trainingRows[foundTrIdx];
-          Object.entries(colTr).forEach(([key, colIdx]) => {
-            if (colIdx !== -1 && colIdx < trRow.length) {
-              let val = trRow[colIdx];
-              if (key === 'leader') consolidatedRow[65] = val;
-              else if (key === 'name') consolidatedRow[66] = val;
-              else if (key === 'empId') consolidatedRow[67] = val;
-              else if (key === 'email') consolidatedRow[68] = val;
-              else if (key === 'path') consolidatedRow[69] = val;
-              else if (key === 'hireDate') consolidatedRow[70] = val;
-              else if (key === 'enrollDate') consolidatedRow[71] = val;
-              else if (key === 'startDate') consolidatedRow[72] = val;
-              else if (key === 'status') consolidatedRow[73] = val;
-              else if (key === 'progress') consolidatedRow[74] = val;
-              else if (key === 'completionDate') consolidatedRow[75] = val;
-            }
-          });
-        }
-
-        finalRows.push(consolidatedRow);
+      for (let i = 1; i < headcountRows.length; i++) {
+        const r = headcountRows[i];
+        if (!r || !r.length) continue;
+        const name = g(r, hCol.name);
+        if (!name || String(name).trim() === '' || name === 'DUMMY ENTRY') continue;
+        const cr = Array(77).fill(null);
+        cr[31]=g(r,hCol.leader); cr[32]=g(r,hCol.name); cr[33]=g(r,hCol.status);
+        cr[34]=g(r,hCol.workerType); cr[35]=g(r,hCol.jobFamily); cr[36]=g(r,hCol.level);
+        cr[37]=g(r,hCol.location); cr[38]=g(r,hCol.country); cr[39]=g(r,hCol.tribe);
+        cr[40]=g(r,hCol.empId); cr[41]=g(r,hCol.hireDate);
+        out.push({ row: cr, index_: idx++ });
       }
 
-      // Incorporate unmatched training rows
-      for (let t = 1; t < trainingRows.length; t++) {
-        if (matchedTrIndices.has(t)) continue;
-        const trRow = trainingRows[t];
-        if (!trRow || trRow.length === 0) continue;
-        const trName = trRow[colTr.name] || '';
-        if (!trName || trName === 'DUMMY ENTRY') continue;
-
-        const consolidatedRow = Array(77).fill(null);
-        Object.entries(colTr).forEach(([key, colIdx]) => {
-          if (colIdx !== -1 && colIdx < trRow.length) {
-            let val = trRow[colIdx];
-            if (key === 'leader') consolidatedRow[65] = val;
-            else if (key === 'name') consolidatedRow[66] = val;
-            else if (key === 'empId') consolidatedRow[67] = val;
-            else if (key === 'email') consolidatedRow[68] = val;
-            else if (key === 'path') consolidatedRow[69] = val;
-            else if (key === 'hireDate') consolidatedRow[70] = val;
-            else if (key === 'enrollDate') consolidatedRow[71] = val;
-            else if (key === 'startDate') consolidatedRow[72] = val;
-            else if (key === 'status') consolidatedRow[73] = val;
-            else if (key === 'progress') consolidatedRow[74] = val;
-            else if (key === 'completionDate') consolidatedRow[75] = val;
-          }
-        });
-
-        finalRows.push(consolidatedRow);
+      for (let i = 1; i < trainingRows.length; i++) {
+        const r = trainingRows[i];
+        if (!r || !r.length) continue;
+        const name = g(r, tCol.name);
+        if (!name || String(name).trim() === '' || name === 'DUMMY ENTRY' || name === '#N/A') continue;
+        const cr = Array(77).fill(null);
+        cr[65]=g(r,tCol.leader); cr[66]=g(r,tCol.name); cr[67]=g(r,tCol.empId);
+        cr[68]=g(r,tCol.email); cr[69]=g(r,tCol.path); cr[70]=g(r,tCol.hireDate);
+        cr[71]=g(r,tCol.enrollDate); cr[72]=g(r,tCol.startDate); cr[73]=g(r,tCol.status);
+        cr[74]=g(r,tCol.progress); cr[75]=g(r,tCol.completionDate);
+        out.push({ row: cr, index_: idx++ });
       }
 
-      const formattedData = [{ row: consolidatedHeaders, index_: 0 }];
-      finalRows.forEach((r, idx) => {
-        formattedData.push({ row: r, index_: idx + 1 });
-      });
-
-      return formattedData;
+      return out;
     }
 
     // Main App Container incorporating Google Sheet & Local Excel update components
