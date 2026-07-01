@@ -625,7 +625,7 @@
         const response = await fetch(exportUrl);
         if (!response.ok) throw new Error("Failed to fetch CSV. Make sure the tab is published.");
         const csvText = await response.text();
-        return csvText.split('\n').map(line => {
+        return csvText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').map(line => {
           const result = []; let current = '', inQuotes = false;
           for (let i = 0; i < line.length; i++) {
             const char = line[i];
@@ -635,7 +635,7 @@
           }
           result.push(current.trim());
           return result;
-        });
+        }).filter(row => row.some(cell => cell !== ''));
       };
 
       // Fetch all three tabs and reconcile
@@ -1112,15 +1112,29 @@
 
       const processedData = useMemo(() => {
         if (!headers.length) return [];
-        return data.filter(item => {
+        const allRows = data.filter(item => {
           const row = item.row;
           if (row === headers) return false;
           const issueIdVal = row[colIndex.issueId];
-          if (issueIdVal === undefined || issueIdVal === null || String(issueIdVal).trim() === '') {
-            return false;
-          }
-          const deptVal = (row[colIndex.dept] || "").toString().replace(/[\s\u00a0\u200b]+/g, ' ').trim();
-          if (!deptVal || deptVal.length === 0 || deptVal === '—' || deptVal === '-' || deptVal.toLowerCase() === "unassigned" || deptVal.toLowerCase().includes("hr software support")) return false;
+          return issueIdVal !== undefined && issueIdVal !== null && String(issueIdVal).trim() !== '';
+        });
+        // Debug: log unique Components values
+        const deptValues = [...new Set(allRows.map(item => JSON.stringify(item.row[colIndex.dept])))];
+        console.log('DEPT VALUES (unique):', deptValues);
+        console.log('DEPT col index:', colIndex.dept);
+        return allRows.filter(item => {
+        const VALID_COMPONENTS = [
+          'se/kg - people services',
+          'manila - people service',
+          'na - people service',
+          'opex',
+          'se/kg - payroll',
+          'manila - na - people services'
+        ];
+        return allRows.filter(item => {
+          const row = item.row;
+          const deptVal = (row[colIndex.dept] || "").toString().trim().toLowerCase();
+          if (!deptVal || !VALID_COMPONENTS.includes(deptVal)) return false;
           if (!row[colIndex.summary] && !row[colIndex.issueKey]) return false;
           return true;
         }).map(item => {
@@ -2486,8 +2500,9 @@
           if (issueIdVal === undefined || issueIdVal === null || String(issueIdVal).trim() === '') {
             return false;
           }
-          const deptVal = (row[opexCol.dept] || "").toString().replace(/\s+/g, ' ').trim();
-          if (!deptVal || deptVal === '' || deptVal === '—' || deptVal === '-' || deptVal.toLowerCase() === "unassigned" || deptVal.toLowerCase().includes("hr software support")) return false;
+          const deptVal = (row[opexCol.dept] || "").toString().trim().toLowerCase();
+          const VALID_DEPTS = ['se/kg - people services','manila - people service','na - people service','opex','se/kg - payroll','manila - na - people services'];
+          if (!deptVal || !VALID_DEPTS.includes(deptVal)) return false;
           return true;
         }).map(item => {
           const row = item.row;
