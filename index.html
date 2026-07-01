@@ -1119,8 +1119,8 @@
           if (issueIdVal === undefined || issueIdVal === null || String(issueIdVal).trim() === '') {
             return false;
           }
-          const deptVal = (row[colIndex.dept] || "").toString().replace(/\s+/g, ' ').trim();
-          if (!deptVal || deptVal === '' || deptVal === '—' || deptVal === '-' || deptVal.toLowerCase() === "unassigned" || deptVal.toLowerCase().includes("hr software support")) return false;
+          const deptVal = (row[colIndex.dept] || "").toString().replace(/[\s\u00a0\u200b]+/g, ' ').trim();
+          if (!deptVal || deptVal.length === 0 || deptVal === '—' || deptVal === '-' || deptVal.toLowerCase() === "unassigned" || deptVal.toLowerCase().includes("hr software support")) return false;
           if (!row[colIndex.summary] && !row[colIndex.issueKey]) return false;
           return true;
         }).map(item => {
