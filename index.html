@@ -1156,7 +1156,7 @@
           const rawTotalCount = parseNum(row[colIndex.totalCount]);
 
           const hoursPerYear = (rawEffSavings * rawTotalCount) / 60;
-          const fteValue = hoursPerYear / 1560;
+          const fteValue = hoursPerYear / 2080;
           const potentialSavings = fteValue * 75000;
           
           const mIdx = createdDate ? createdDate.getMonth() : null;
@@ -1412,7 +1412,7 @@
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
             <MetricCard label="CURRENT PIPELINE" value={stats.pipelineCount} formula="Active Projects" icon={<Icon name="Clock" className="w-5 h-5 text-emerald-600" />} />
             <MetricCard label={<div className="flex items-center gap-1"><span>{potentialActualFilter === 'Potential' ? 'Potential' : 'Actual'} Savings</span> {potActToggle}</div>} value={'€' + Math.round(stats.savings).toLocaleString()} formula="Sum of FTE x 75,000 euros" color={stats.fteProgress >= 96 ? 'text-[#062115]' : 'text-[#e11d48]'} icon={<Icon name="TrendingUp" className="w-5 h-5 text-lime-600" />} />
-            <MetricCard label={<div className="flex items-center gap-1"><span>{potentialActualFilter === 'Potential' ? 'FTE Yield' : 'Actual FTE Yield'}</span> {potActToggle}</div>} value={stats.fte.toFixed(2)} formula="Sum of (mins x count / 60) / 1560" color={stats.fteProgress >= 96 ? 'text-[#062115]' : 'text-[#e11d48]'} icon={<Icon name="Users" className="w-5 h-5 text-indigo-600" />} />
+            <MetricCard label={<div className="flex items-center gap-1"><span>{potentialActualFilter === 'Potential' ? 'FTE Yield' : 'Actual FTE Yield'}</span> {potActToggle}</div>} value={stats.fte.toFixed(2)} formula="Sum of (mins x count / 60) / 2080" color={stats.fteProgress >= 96 ? 'text-[#062115]' : 'text-[#e11d48]'} icon={<Icon name="Users" className="w-5 h-5 text-indigo-600" />} />
             <MetricCard label="Efficiency Target" value={Math.round(stats.fteProgress) + '%'} sub={stats.targetGoalText} secondarySub={'Target: €' + Math.round(stats.savingsTarget).toLocaleString() + ' | Target: ' + stats.fteTarget.toFixed(2) + ' FTE'} showProgress progress={stats.fteProgress} color={stats.fteProgress >= 96 ? 'text-[#059669]' : stats.fteProgress >= 80 ? 'text-amber-500' : 'text-rose-600'} progressColor={stats.fteProgress >= 96 ? 'bg-[#059669]' : stats.fteProgress >= 80 ? 'bg-amber-500' : 'bg-rose-500'} icon={<Icon name="Target" className={'w-5 h-5 ' + (stats.fteProgress >= 96 ? 'text-[#059669]' : stats.fteProgress >= 80 ? 'text-amber-500' : 'text-rose-600')} />} />
             <MetricCard label="Project Health" value={Math.round(stats.delayRate) + '%'} formula="Delayed / total visible x 100" color={stats.delayRate > 20 ? 'text-rose-600' : 'text-[#062115]'} icon={<Icon name="AlertTriangle" className="w-5 h-5 text-amber-500" />} />
           </div>
