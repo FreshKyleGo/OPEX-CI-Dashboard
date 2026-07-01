@@ -315,7 +315,6 @@
       // Smart Roster Split Engine: Treat as unified Canvas Source if sheet name matches or if it contains over 50 columns
       let consolidatedSheet = findSheet(["canvas source", "consolidated", "master", "unified"]);
       if (!consolidatedSheet) {
-        // Automatically discover if any single sheet contains consolidated side-by-side columns
         const firstSheetName = sheetNames[0];
         const possibleGrid = sheetsMap[firstSheetName];
         if (possibleGrid && possibleGrid[0] && possibleGrid[0].length >= 50) {
@@ -324,30 +323,101 @@
       }
 
       if (consolidatedSheet && consolidatedSheet.length > 1) {
-        // Split the consolidated row slices back into distinct functional tables
-        consolidatedSheet.forEach(row => {
-          const jiraSlice = row.slice(0, 31);
-          const hcSlice = row.slice(31, 65);
-          const trSlice = row.slice(65, 77);
+        // DIRECT MAP: Each row already has Jira + Headcount + Training side-by-side.
+        // Map directly using header discovery — do NOT split then re-merge (causes double-counting).
+        const rawHeaders = consolidatedSheet[0];
+        const fi = (name) => findColIndex(rawHeaders, name);
 
-          const isNotEmpty = (arr) => arr.some(cell => cell !== null && cell !== undefined && String(cell).trim() !== '');
+        const colJ = {
+          issueKey: fi("Issue key"), issueId: fi("Issue id"), summary: fi("Summary"),
+          reporter: fi("Reporter"), dept: fi("Components"), status: fi("Status"),
+          description: fi("Description"), created: fi("Created"),
+          effectiveSavings: fi("Effective Savings"), totalCount: fi("Total count"),
+          startDate: fi("Start Date") !== -1 ? fi("Start Date") : fi("Start date"),
+          actualEnd: fi("End Date"), plannedEnd: fi("Planned End Date"),
+          businessImpact: fi("Business impact"), customerImpact: fi("Customer impact"),
+          assignee: fi("Assignee"), solution: fi("Solution"),
+          blockerCategory: fi("Blocker Category"),
+          stageGate: fi("Stage Gate") !== -1 ? fi("Stage Gate") : fi("Custom field (Stage Gate)"),
+          caseLabelFlag: fi("Case Label"), caseLabelValue: fi("Concise Description")
+        };
 
-          if (isNotEmpty(jiraSlice)) {
-            jiraRows.push(jiraSlice);
-          }
-          if (isNotEmpty(hcSlice)) {
-            headcountRows.push(hcSlice);
-          }
-          if (isNotEmpty(trSlice)) {
-            trainingRows.push(trSlice);
-          }
+        // Headcount headers start after Jira section — search from col 31 onward
+        const colH = {
+          leader: findColIndex(rawHeaders, "Leader", 31, rawHeaders.length),
+          name: findColIndex(rawHeaders, "Full Legal Name", 31, rawHeaders.length),
+          status: findColIndex(rawHeaders, "Status", 31, rawHeaders.length),
+          workerType: findColIndex(rawHeaders, "Worker Type", 31, rawHeaders.length),
+          jobFamily: findColIndex(rawHeaders, "Job Family", 31, rawHeaders.length),
+          level: findColIndex(rawHeaders, "Management Level", 31, rawHeaders.length),
+          location: findColIndex(rawHeaders, "Location", 31, rawHeaders.length),
+          country: findColIndex(rawHeaders, "Country", 31, rawHeaders.length),
+          tribe: findColIndex(rawHeaders, "Department/Tribe", 31, rawHeaders.length),
+          empId: findColIndex(rawHeaders, "Employee ID", 31, rawHeaders.length),
+          hireDate: findColIndex(rawHeaders, "Hire Date", 31, rawHeaders.length),
+        };
+
+        // Training headers — search from col 65 onward
+        const hcEnd = colH.leader !== -1 ? colH.leader + 35 : rawHeaders.length;
+        const colT = {
+          leader: findColIndex(rawHeaders, "Leader", hcEnd, rawHeaders.length),
+          name: findColIndex(rawHeaders, "Employee Name", hcEnd, rawHeaders.length),
+          empId: findColIndex(rawHeaders, "Employee ID", hcEnd, rawHeaders.length),
+          email: findColIndex(rawHeaders, "Email", hcEnd, rawHeaders.length),
+          path: findColIndex(rawHeaders, "Path Title", hcEnd, rawHeaders.length),
+          hireDate: findColIndex(rawHeaders, "Hire Date", hcEnd, rawHeaders.length),
+          enrollDate: findColIndex(rawHeaders, "Learner Enrollment Date", hcEnd, rawHeaders.length),
+          startDate: findColIndex(rawHeaders, "Learner Start Date", hcEnd, rawHeaders.length),
+          status: findColIndex(rawHeaders, "Learner Status", hcEnd, rawHeaders.length),
+          progress: findColIndex(rawHeaders, "Progress", hcEnd, rawHeaders.length),
+          completionDate: findColIndex(rawHeaders, "Learner Completion Date", hcEnd, rawHeaders.length),
+        };
+
+        const cHdr = Array(77).fill(null);
+        cHdr[0]="Issue key";cHdr[1]="Issue id";cHdr[2]="Summary";cHdr[3]="Reporter";
+        cHdr[4]="Components";cHdr[5]="Status";cHdr[6]="Description";cHdr[7]="Created";
+        cHdr[11]="Effective Savings";cHdr[12]="Total count";cHdr[13]="Start Date";
+        cHdr[14]="End Date";cHdr[15]="Planned End Date";cHdr[16]="Business impact";
+        cHdr[17]="Customer impact";cHdr[18]="Assignee";cHdr[19]="Solution";
+        cHdr[20]="Blocker Category";cHdr[21]="Stage Gate";cHdr[22]="Case Label";cHdr[23]="Concise Description";
+        cHdr[31]="Leader";cHdr[32]="Full Legal Name";cHdr[33]="Status";cHdr[34]="Worker Type";
+        cHdr[35]="Job Family";cHdr[36]="Management Level";cHdr[37]="Location";cHdr[38]="Country";
+        cHdr[39]="Department/Tribe";cHdr[40]="Employee ID";cHdr[41]="Hire Date";
+        cHdr[65]="Leader";cHdr[66]="Employee Name";cHdr[67]="Employee ID";cHdr[68]="Email";
+        cHdr[69]="Path Title";cHdr[70]="Hire Date";cHdr[71]="Learner Enrollment Date";
+        cHdr[72]="Learner Start Date";cHdr[73]="Learner Status";cHdr[74]="Progress";cHdr[75]="Learner Completion Date";
+
+        const out = [{ row: cHdr, index_: 0 }];
+        const g = (row, ci) => (ci !== undefined && ci !== -1 && ci < row.length) ? row[ci] : null;
+
+        consolidatedSheet.slice(1).forEach((row, idx) => {
+          const cr = Array(77).fill(null);
+          cr[0]=g(row,colJ.issueKey);cr[1]=g(row,colJ.issueId);cr[2]=g(row,colJ.summary);
+          cr[3]=g(row,colJ.reporter);cr[4]=g(row,colJ.dept);cr[5]=g(row,colJ.status);
+          cr[6]=g(row,colJ.description);cr[7]=g(row,colJ.created);
+          cr[11]=g(row,colJ.effectiveSavings);cr[12]=g(row,colJ.totalCount);
+          cr[13]=g(row,colJ.startDate);cr[14]=g(row,colJ.actualEnd);cr[15]=g(row,colJ.plannedEnd);
+          cr[16]=g(row,colJ.businessImpact);cr[17]=g(row,colJ.customerImpact);
+          cr[18]=g(row,colJ.assignee);cr[19]=g(row,colJ.solution);
+          cr[20]=g(row,colJ.blockerCategory);cr[21]=g(row,colJ.stageGate);
+          cr[22]=g(row,colJ.caseLabelFlag);cr[23]=g(row,colJ.caseLabelValue);
+          cr[31]=g(row,colH.leader);cr[32]=g(row,colH.name);cr[33]=g(row,colH.status);
+          cr[34]=g(row,colH.workerType);cr[35]=g(row,colH.jobFamily);cr[36]=g(row,colH.level);
+          cr[37]=g(row,colH.location);cr[38]=g(row,colH.country);cr[39]=g(row,colH.tribe);
+          cr[40]=g(row,colH.empId);cr[41]=g(row,colH.hireDate);
+          cr[65]=g(row,colT.leader);cr[66]=g(row,colT.name);cr[67]=g(row,colT.empId);
+          cr[68]=g(row,colT.email);cr[69]=g(row,colT.path);cr[70]=g(row,colT.hireDate);
+          cr[71]=g(row,colT.enrollDate);cr[72]=g(row,colT.startDate);cr[73]=g(row,colT.status);
+          cr[74]=g(row,colT.progress);cr[75]=g(row,colT.completionDate);
+          out.push({ row: cr, index_: idx + 1 });
         });
-      } else {
-        // Default: Read distinct tabs/worksheets directly
-        jiraRows = findSheet(["jira", "database"]) || sheetsMap[sheetNames[0]] || [];
-        headcountRows = findSheet(["headcount", "personnel", "staff"]) || sheetsMap[sheetNames[1]] || [];
-        trainingRows = findSheet(["training", "lss", "six sigma", "white belt"]) || sheetsMap[sheetNames[2]] || [];
+        return out;
       }
+
+      // Default: Read distinct tabs/worksheets directly
+      jiraRows = findSheet(["jira", "database"]) || sheetsMap[sheetNames[0]] || [];
+      headcountRows = findSheet(["headcount", "personnel", "staff"]) || sheetsMap[sheetNames[1]] || [];
+      trainingRows = findSheet(["training", "lss", "six sigma", "white belt"]) || sheetsMap[sheetNames[2]] || [];
 
       if (!jiraRows.length && !headcountRows.length && !trainingRows.length) return null;
 
