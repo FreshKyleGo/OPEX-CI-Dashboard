@@ -1,0 +1,3096 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HelloFresh Excellence Portal Standalone</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- D3.js for high fidelity charts -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+  
+  <!-- SheetJS (XLSX) for client-side Excel parsing -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+  <!-- React & ReactDOM UMD -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  
+  <!-- Babel Standalone for in-browser JSX parsing -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    /* Premium aesthetics and custom styling */
+    body {
+      background-color: #f8fafc;
+    }
+    .scrollbar-none::-webkit-scrollbar {
+      display: none;
+    }
+    .scrollbar-none {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-fade-in {
+      animation: fadeIn 0.3s ease-out forwards;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- React mounting container -->
+  <div id="root"></div>
+
+  <!-- React Code with Babel Compiler -->
+  <script type="text/babel">
+    const { useState, useMemo, useEffect, useRef } = React;
+
+    // Color Palette Constants
+    const HF_GREEN = '#91c13e';
+    const HF_GREEN_BRIGHT = '#94D500';
+    const HF_DARK_GREEN = '#062115';
+    const HF_OLIVE = '#4d6400';
+    const HF_SLATE = '#333e48';
+    const BAR_SUBMITTED_GRAY = '#cbd5e1';
+
+    // Universal Timezone-Safe Date Parser
+    const parseDateSafe = (val) => {
+      if (!val) return null;
+      if (typeof val === 'number') {
+        const d = new Date(Math.round((val - 25569) * 86400 * 1000));
+        return isNaN(d.getTime()) ? null : d;
+      }
+      const str = String(val).trim();
+      if (!str || str === 'null' || str === '#N/A' || str === '0') return null;
+      const match = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (match) {
+        const year = parseInt(match[1], 10);
+        const month = parseInt(match[2], 10) - 1;
+        const day = parseInt(match[3], 10);
+        return new Date(year, month, day);
+      }
+      const parsed = Date.parse(str);
+      if (!isNaN(parsed)) {
+        return new Date(parsed);
+      }
+      return null;
+    };
+
+    // Safe Value Accessor
+    const safeVal = (row, idx) => {
+      if (!row || idx === undefined || idx === -1) return '';
+      const val = row[idx];
+      return val !== undefined && val !== null ? val : '';
+    };
+
+    // Helper to dynamically discover column index by header name in specified column ranges
+    const findColIndex = (headers, name, start = 0, end = headers.length) => {
+      for (let i = start; i < end; i++) {
+        if (headers[i] && String(headers[i]).toLowerCase().trim() === name.toLowerCase().trim()) {
+          return i;
+        }
+      }
+      for (let i = start; i < end; i++) {
+        if (headers[i] && String(headers[i]).toLowerCase().includes(name.toLowerCase())) {
+          return i;
+        }
+      }
+      return -1;
+    };
+
+    const cleanName = (name) => {
+      if (!name) return '';
+      let str = String(name).toLowerCase().trim();
+      str = str.replace(/\b(mr|mrs|ms|miss|dr|prof)\.?\b/gi, '');
+      str = str.replace(/\./g, ' ');
+      return str.replace(/\s+/g, ' ').trim();
+    };
+
+    const matchNames = (nameA, nameB) => {
+      const cleanA = cleanName(nameA);
+      const cleanB = cleanName(nameB);
+      if (!cleanA || !cleanB) return false;
+      if (cleanA === cleanB) return true;
+      const aliases = [
+        ["debbie benitez", "debbie cumplido"],
+        ["andrew clark", "drew clark"]
+      ];
+      for (const pair of aliases) {
+        if ((cleanA === pair[0] && cleanB === pair[1]) || (cleanA === pair[1] && cleanB === pair[0])) {
+          return true;
+        }
+      }
+      const tokensA = cleanA.split(' ');
+      const tokensB = cleanB.split(' ');
+      if (tokensA.length === 0 || tokensB.length === 0) return false;
+      const firstA = tokensA[0];
+      const firstB = tokensB[0];
+      if (firstA !== firstB) return false;
+      const othersA = tokensA.slice(1);
+      const othersB = tokensB.slice(1);
+      if (othersA.length === 0 || othersB.length === 0) return false;
+      const expand = (toks) => {
+        const result = new Set();
+        toks.forEach(t => {
+          result.add(t);
+          if (t.includes('-')) {
+            t.split('-').forEach(p => {
+              if (p) result.add(p);
+            });
+          }
+        });
+        return result;
+      };
+      const setA = expand(othersA);
+      const setB = expand(othersB);
+      for (const item of setA) {
+        if (setB.has(item)) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    // Robust SVG Icon Mapper to prevent UMD script breaking
+    function Icon({ name, className = "w-5 h-5" }) {
+      const paths = {
+        LayoutDashboard: <g><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></g>,
+        Users: <g><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></g>,
+        TrendingUp: <g><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></g>,
+        Clock: <g><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></g>,
+        AlertTriangle: <g><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></g>,
+        Filter: <g><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></g>,
+        Search: <g><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></g>,
+        Info: <g><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></g>,
+        Calendar: <g><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></g>,
+        User: <g><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></g>,
+        CheckCircle2: <g><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></g>,
+        RotateCcw: <g><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><polyline points="3 3 3 8 8 8"/></g>,
+        ChevronDown: <g><polyline points="6 9 12 15 18 9"/></g>,
+        Check: <g><polyline points="20 6 9 17 4 12"/></g>,
+        X: <g><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></g>,
+        Target: <g><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></g>,
+        BarChart3: <g><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></g>,
+        Plus: <g><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></g>,
+        Trash2: <g><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></g>,
+        Edit3: <g><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></g>,
+        Shield: <g><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></g>,
+        Leaf: <g><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 3.5 1 8a7 7 0 0 1-9 10Z"/><path d="M9 22a5 5 0 0 1-5-5c0-4 4-5 4-5"/></g>,
+        ChevronRight: <g><polyline points="9 18 15 12 9 6"/></g>,
+        MapPin: <g><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></g>,
+        Briefcase: <g><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></g>,
+        Award: <g><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></g>,
+        Mail: <g><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></g>,
+        ArrowUpDown: <g><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></g>,
+        RefreshCw: <g><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></g>,
+        Lightbulb: <g><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A5 5 0 0 0 8 8c0 1 .3 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><line x1="9" y1="18" x2="15" y2="18"/><line x1="10" y1="22" x2="14" y2="22"/></g>,
+        CheckCircle: <g><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></g>,
+        HelpCircle: <g><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></g>,
+        Tag: <g><path d="m21 16-7 7-9-9V4h6l7 7z"/><circle cx="9.5" cy="9.5" r="1.5"/></g>,
+        GitBranch: <g><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></g>,
+        Globe: <g><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1 4-10z"/></g>
+      };
+
+      const selectedPath = paths[name] || <circle cx="12" cy="12" r="10" />;
+      return (
+        <svg 
+          className={className} 
+          viewBox="0 0 24 24" 
+          fill="none" 
+          stroke="currentColor" 
+          strokeWidth="2" 
+          strokeLinecap="round" 
+          strokeLinejoin="round"
+        >
+          {selectedPath}
+        </svg>
+      );
+    }
+
+    // Component for Regional Refresh Bar
+    function RegionalRefreshBar({ view }) {
+      const REFRESH_HOURS = 1;
+      const [tick, setTick] = useState(0);
+
+      useEffect(() => {
+        const timer = setInterval(() => {
+          setTick(prev => prev + 1);
+        }, 10000);
+        return () => clearInterval(timer);
+      }, []);
+
+      const now = new Date();
+      const isMonthly = view === 'headcount' || view === 'training';
+      const flooredUTCHours = Math.floor(now.getUTCHours() / REFRESH_HOURS) * REFRESH_HOURS;
+      const lastSyncUTC = isMonthly
+        ? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0))
+        : new Date(Date.UTC(
+            now.getUTCFullYear(),
+            now.getUTCMonth(),
+            now.getUTCDate(),
+            flooredUTCHours,
+            0,
+            0,
+            0
+          ));
+
+      const msElapsed = now.getTime() - lastSyncUTC.getTime();
+      const hoursAgo = Math.floor(msElapsed / (1000 * 60 * 60));
+      const minutesAgo = Math.floor((msElapsed % (1000 * 60 * 60)) / (1000 * 60));
+
+      const nextSyncUTC = isMonthly
+        ? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 0, 0, 0))
+        : new Date(lastSyncUTC.getTime() + REFRESH_HOURS * 60 * 60 * 1000);
+      const msToNext = nextSyncUTC.getTime() - now.getTime();
+      const hoursToNext = Math.floor(msToNext / (1000 * 60 * 60));
+      const minutesToNext = Math.floor((msToNext % (1000 * 60 * 60)) / (1000 * 60));
+
+      const formatTZ = (date, timeZone) => {
+        return date.toLocaleString('en-US', {
+          timeZone,
+          ...(isMonthly ? { month: 'short', day: 'numeric' } : {}),
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        });
+      };
+
+      const berlinTime = formatTZ(lastSyncUTC, 'Europe/Berlin');
+      const sydneyTime = formatTZ(lastSyncUTC, 'Australia/Sydney');
+      const nyTime = formatTZ(lastSyncUTC, 'America/New_York');
+      const manilaTime = formatTZ(lastSyncUTC, 'Asia/Manila');
+
+      const agoText = isMonthly
+        ? `Synced ${Math.floor(msElapsed / (1000 * 60 * 60 * 24))}d ${Math.floor((msElapsed % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))}h ago`
+        : `Synced ${hoursAgo}h ${minutesAgo}m ago`;
+
+      const nextText = isMonthly
+        ? `next in ${Math.floor(msToNext / (1000 * 60 * 60 * 24))}d ${Math.floor((msToNext % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))}h`
+        : `next in ${hoursToNext}h ${minutesToNext}m`;
+
+      return (
+        <div className="bg-[#0c1a12] text-slate-300 text-xs px-4 md:px-8 py-2 flex flex-wrap items-center justify-between gap-3 border-b border-[#91c13e]/20 transition-all shrink-0">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-1 text-[#91c13e] font-bold">
+              <Icon name="Globe" className="w-3.5 h-3.5" />
+              <span className="uppercase tracking-widest text-[10px]"> Last Sync:</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-mono font-semibold">
+              <span>Berlin: <span className="text-white">{berlinTime}</span></span>
+              <span className="text-slate-600">|</span>
+              <span>ANZ: <span className="text-white">{sydneyTime}</span></span>
+              <span className="text-slate-600">|</span>
+              <span>US: <span className="text-white">{nyTime}</span></span>
+              <span className="text-slate-600">|</span>
+              <span>Manila: <span className="text-white">{manilaTime}</span></span>
+            </div>
+          </div>
+          <div className="text-[11px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-2">
+            <span>{agoText}</span>
+            <span className="text-slate-600">·</span>
+            <span>next in <strong className="text-[#91c13e]">{nextText.replace('next in ', '')}</strong></span>
+          </div>
+        </div>
+      );
+    }
+
+    // Helper to align multiple parsed excel sheets into a standardized consolidated row schema
+    function reconcileSpreadsheets(sheetsMap) {
+      const sheetNames = Object.keys(sheetsMap);
+      const findSheet = (keywords) => {
+        const found = sheetNames.find(n => keywords.some(k => n.toLowerCase().includes(k)));
+        return found ? sheetsMap[found] : null;
+      };
+
+      let jiraRows = [];
+      let headcountRows = [];
+      let trainingRows = [];
+
+      // Smart Roster Split Engine: Treat as unified Canvas Source if sheet name matches or if it contains over 50 columns
+      let consolidatedSheet = findSheet(["canvas source", "consolidated", "master", "unified"]);
+      if (!consolidatedSheet) {
+        // Automatically discover if any single sheet contains consolidated side-by-side columns
+        const firstSheetName = sheetNames[0];
+        const possibleGrid = sheetsMap[firstSheetName];
+        if (possibleGrid && possibleGrid[0] && possibleGrid[0].length >= 50) {
+          consolidatedSheet = possibleGrid;
+        }
+      }
+
+      if (consolidatedSheet && consolidatedSheet.length > 1) {
+        // Split the consolidated row slices back into distinct functional tables
+        consolidatedSheet.forEach(row => {
+          const jiraSlice = row.slice(0, 31);
+          const hcSlice = row.slice(31, 65);
+          const trSlice = row.slice(65, 77);
+
+          const isNotEmpty = (arr) => arr.some(cell => cell !== null && cell !== undefined && String(cell).trim() !== '');
+
+          if (isNotEmpty(jiraSlice)) {
+            jiraRows.push(jiraSlice);
+          }
+          if (isNotEmpty(hcSlice)) {
+            headcountRows.push(hcSlice);
+          }
+          if (isNotEmpty(trSlice)) {
+            trainingRows.push(trSlice);
+          }
+        });
+      } else {
+        // Default: Read distinct tabs/worksheets directly
+        jiraRows = findSheet(["jira", "database"]) || sheetsMap[sheetNames[0]] || [];
+        headcountRows = findSheet(["headcount", "personnel", "staff"]) || sheetsMap[sheetNames[1]] || [];
+        trainingRows = findSheet(["training", "lss", "six sigma", "white belt"]) || sheetsMap[sheetNames[2]] || [];
+      }
+
+      if (!jiraRows.length && !headcountRows.length && !trainingRows.length) return null;
+
+      const jiraHeaders = jiraRows[0] || [];
+      const hcHeaders = headcountRows[0] || [];
+      const trHeaders = trainingRows[0] || [];
+
+      // Dynamic Header Mapping Identifiers
+      const colJira = {
+        issueKey: findColIndex(jiraHeaders, "Issue key"),
+        issueId: findColIndex(jiraHeaders, "Issue id"),
+        summary: findColIndex(jiraHeaders, "Summary"),
+        reporter: findColIndex(jiraHeaders, "Reporter"),
+        dept: findColIndex(jiraHeaders, "Components"),
+        status: findColIndex(jiraHeaders, "Status"),
+        description: findColIndex(jiraHeaders, "Description"),
+        created: findColIndex(jiraHeaders, "Created"),
+        delayed: findColIndex(jiraHeaders, "Delayed?"),
+        savedHrs: findColIndex(jiraHeaders, "Saved / Year (hrs)"),
+        savedFte: findColIndex(jiraHeaders, "Saved / Year (FTE)"),
+        effectiveSavings: findColIndex(jiraHeaders, "Effective Savings"),
+        totalCount: findColIndex(jiraHeaders, "Total count"),
+        startDate: findColIndex(jiraHeaders, "Start Date"),
+        actualEnd: findColIndex(jiraHeaders, "End Date"),
+        plannedEnd: findColIndex(jiraHeaders, "Planned End Date"),
+        businessImpact: findColIndex(jiraHeaders, "Business impact"),
+        customerImpact: findColIndex(jiraHeaders, "Customer impact"),
+        assignee: findColIndex(jiraHeaders, "Assignee"),
+        solution: findColIndex(jiraHeaders, "Solution"),
+        blockerCategory: findColIndex(jiraHeaders, "Blocker Category"),
+        stageGate: findColIndex(jiraHeaders, "Stage Gate") !== -1 ? findColIndex(jiraHeaders, "Stage Gate") : findColIndex(jiraHeaders, "Custom field (Stage Gate)"),
+        caseLabelFlag: findColIndex(jiraHeaders, "Case Label"),
+        caseLabelValue: findColIndex(jiraHeaders, "Concise Description")
+      };
+
+      const colHc = {
+        leader: findColIndex(hcHeaders, "Leader"),
+        name: findColIndex(hcHeaders, "Full Legal Name"),
+        status: findColIndex(hcHeaders, "Status"),
+        workerType: findColIndex(hcHeaders, "Worker Type"),
+        jobFamily: findColIndex(hcHeaders, "Job Family"),
+        level: findColIndex(hcHeaders, "Management Level"),
+        location: findColIndex(hcHeaders, "Location"),
+        country: findColIndex(hcHeaders, "Country"),
+        tribe: findColIndex(hcHeaders, "Department/Tribe"),
+        empId: findColIndex(hcHeaders, "Employee ID"),
+        hireDate: findColIndex(hcHeaders, "Hire Date")
+      };
+
+      const colTr = {
+        leader: findColIndex(trHeaders, "Leader"),
+        name: findColIndex(trHeaders, "Employee Name"),
+        empId: findColIndex(trHeaders, "Employee ID"),
+        email: findColIndex(trHeaders, "Email"),
+        path: findColIndex(trHeaders, "Path Title"),
+        hireDate: findColIndex(trHeaders, "Hire Date"),
+        enrollDate: findColIndex(trHeaders, "Learner Enrollment Date"),
+        startDate: findColIndex(trHeaders, "Learner Start Date"),
+        status: findColIndex(trHeaders, "Learner Status"),
+        progress: findColIndex(trHeaders, "Progress"),
+        completionDate: findColIndex(trHeaders, "Learner Completion Date")
+      };
+
+      const consolidatedHeaders = Array(77).fill(null);
+      consolidatedHeaders[0] = "Issue key";
+      consolidatedHeaders[1] = "Issue id";
+      consolidatedHeaders[2] = "Summary";
+      consolidatedHeaders[3] = "Reporter";
+      consolidatedHeaders[4] = "Components";
+      consolidatedHeaders[5] = "Status";
+      consolidatedHeaders[6] = "Description";
+      consolidatedHeaders[7] = "Created";
+      consolidatedHeaders[8] = "Delayed?";
+      consolidatedHeaders[9] = "Saved / Year (hrs)";
+      consolidatedHeaders[10] = "Saved / Year (FTE)";
+      consolidatedHeaders[11] = "Effective Savings";
+      consolidatedHeaders[12] = "Total count";
+      consolidatedHeaders[13] = "Start Date";
+      consolidatedHeaders[14] = "End Date";
+      consolidatedHeaders[15] = "Planned End Date";
+      consolidatedHeaders[16] = "Business impact";
+      consolidatedHeaders[17] = "Customer impact";
+      consolidatedHeaders[18] = "Assignee";
+      consolidatedHeaders[19] = "Solution";
+      consolidatedHeaders[20] = "Blocker Category";
+      consolidatedHeaders[21] = "Stage Gate";
+      consolidatedHeaders[22] = "Case Label";
+      consolidatedHeaders[23] = "Concise Description";
+
+      consolidatedHeaders[31] = "Leader";
+      consolidatedHeaders[32] = "Full Legal Name";
+      consolidatedHeaders[33] = "Status";
+      consolidatedHeaders[34] = "Worker Type";
+      consolidatedHeaders[35] = "Job Family";
+      consolidatedHeaders[36] = "Management Level";
+      consolidatedHeaders[37] = "Location";
+      consolidatedHeaders[38] = "Country";
+      consolidatedHeaders[39] = "Department/Tribe";
+      consolidatedHeaders[40] = "Employee ID";
+      consolidatedHeaders[41] = "Hire Date";
+
+      consolidatedHeaders[65] = "Leader";
+      consolidatedHeaders[66] = "Employee Name";
+      consolidatedHeaders[67] = "Employee ID";
+      consolidatedHeaders[68] = "Email";
+      consolidatedHeaders[69] = "Path Title";
+      consolidatedHeaders[70] = "Hire Date";
+      consolidatedHeaders[71] = "Learner Enrollment Date";
+      consolidatedHeaders[72] = "Learner Start Date";
+      consolidatedHeaders[73] = "Learner Status";
+      consolidatedHeaders[74] = "Progress";
+      consolidatedHeaders[75] = "Learner Completion Date";
+
+      const finalRows = [];
+      const matchedHcIndices = new Set();
+      const matchedTrIndices = new Set();
+
+      // Align from Jira Perspective
+      for (let i = 1; i < jiraRows.length; i++) {
+        const jRow = jiraRows[i];
+        if (!jRow || jRow.length === 0) continue;
+        const reporterVal = jRow[colJira.reporter] || '';
+        if (!reporterVal) continue;
+
+        const consolidatedRow = Array(77).fill(null);
+        Object.entries(colJira).forEach(([key, colIdx]) => {
+          if (colIdx !== -1 && colIdx < jRow.length) {
+            let val = jRow[colIdx];
+            if (key === 'issueKey') consolidatedRow[0] = val;
+            else if (key === 'issueId') consolidatedRow[1] = val;
+            else if (key === 'summary') consolidatedRow[2] = val;
+            else if (key === 'reporter') consolidatedRow[3] = val;
+            else if (key === 'dept') consolidatedRow[4] = val;
+            else if (key === 'status') consolidatedRow[5] = val;
+            else if (key === 'description') consolidatedRow[6] = val;
+            else if (key === 'created') consolidatedRow[7] = val;
+            else if (key === 'delayed') consolidatedRow[8] = val;
+            else if (key === 'savedHrs') consolidatedRow[9] = val;
+            else if (key === 'savedFte') consolidatedRow[10] = val;
+            else if (key === 'effectiveSavings') consolidatedRow[11] = val;
+            else if (key === 'totalCount') consolidatedRow[12] = val;
+            else if (key === 'startDate') consolidatedRow[13] = val;
+            else if (key === 'actualEnd') consolidatedRow[14] = val;
+            else if (key === 'plannedEnd') consolidatedRow[15] = val;
+            else if (key === 'businessImpact') consolidatedRow[16] = val;
+            else if (key === 'customerImpact') consolidatedRow[17] = val;
+            else if (key === 'assignee') consolidatedRow[18] = val;
+            else if (key === 'solution') consolidatedRow[19] = val;
+            else if (key === 'blockerCategory') consolidatedRow[20] = val;
+            else if (key === 'stageGate') consolidatedRow[21] = val;
+            else if (key === 'caseLabelFlag') consolidatedRow[29] = val;
+            else if (key === 'caseLabelValue') consolidatedRow[30] = val;
+          }
+        });
+
+        // Find Headcount Record Match
+        let foundHcIdx = -1;
+        for (let h = 1; h < headcountRows.length; h++) {
+          const hcRow = headcountRows[h];
+          if (!hcRow) continue;
+          const hcName = hcRow[colHc.name] || '';
+          if (matchNames(reporterVal, hcName)) {
+            foundHcIdx = h;
+            matchedHcIndices.add(h);
+            break;
+          }
+        }
+
+        if (foundHcIdx !== -1) {
+          const hcRow = headcountRows[foundHcIdx];
+          Object.entries(colHc).forEach(([key, colIdx]) => {
+            if (colIdx !== -1 && colIdx < hcRow.length) {
+              let val = hcRow[colIdx];
+              if (key === 'leader') consolidatedRow[31] = val;
+              else if (key === 'name') consolidatedRow[32] = val;
+              else if (key === 'status') consolidatedRow[33] = val;
+              else if (key === 'workerType') consolidatedRow[34] = val;
+              else if (key === 'jobFamily') consolidatedRow[35] = val;
+              else if (key === 'level') consolidatedRow[36] = val;
+              else if (key === 'location') consolidatedRow[37] = val;
+              else if (key === 'country') consolidatedRow[38] = val;
+              else if (key === 'tribe') consolidatedRow[39] = val;
+              else if (key === 'empId') consolidatedRow[40] = val;
+              else if (key === 'hireDate') consolidatedRow[41] = val;
+            }
+          });
+        }
+
+        // Find Training Record Match
+        let foundTrIdx = -1;
+        for (let t = 1; t < trainingRows.length; t++) {
+          const trRow = trainingRows[t];
+          if (!trRow) continue;
+          const trName = trRow[colTr.name] || '';
+          if (matchNames(reporterVal, trName)) {
+            foundTrIdx = t;
+            matchedTrIndices.add(t);
+            break;
+          }
+        }
+
+        if (foundTrIdx !== -1) {
+          const trRow = trainingRows[foundTrIdx];
+          Object.entries(colTr).forEach(([key, colIdx]) => {
+            if (colIdx !== -1 && colIdx < trRow.length) {
+              let val = trRow[colIdx];
+              if (key === 'leader') consolidatedRow[65] = val;
+              else if (key === 'name') consolidatedRow[66] = val;
+              else if (key === 'empId') consolidatedRow[67] = val;
+              else if (key === 'email') consolidatedRow[68] = val;
+              else if (key === 'path') consolidatedRow[69] = val;
+              else if (key === 'hireDate') consolidatedRow[70] = val;
+              else if (key === 'enrollDate') consolidatedRow[71] = val;
+              else if (key === 'startDate') consolidatedRow[72] = val;
+              else if (key === 'status') consolidatedRow[73] = val;
+              else if (key === 'progress') consolidatedRow[74] = val;
+              else if (key === 'completionDate') consolidatedRow[75] = val;
+            }
+          });
+        }
+
+        finalRows.push(consolidatedRow);
+      }
+
+      // Incorporate unmatched headcount rows
+      for (let h = 1; h < headcountRows.length; h++) {
+        if (matchedHcIndices.has(h)) continue;
+        const hcRow = headcountRows[h];
+        if (!hcRow || hcRow.length === 0) continue;
+        const hcName = hcRow[colHc.name] || '';
+        if (!hcName || hcName === 'DUMMY ENTRY') continue;
+
+        const consolidatedRow = Array(77).fill(null);
+        Object.entries(colHc).forEach(([key, colIdx]) => {
+          if (colIdx !== -1 && colIdx < hcRow.length) {
+            let val = hcRow[colIdx];
+            if (key === 'leader') consolidatedRow[31] = val;
+            else if (key === 'name') consolidatedRow[32] = val;
+            else if (key === 'status') consolidatedRow[33] = val;
+            else if (key === 'workerType') consolidatedRow[34] = val;
+            else if (key === 'jobFamily') consolidatedRow[35] = val;
+            else if (key === 'level') consolidatedRow[36] = val;
+            else if (key === 'location') consolidatedRow[37] = val;
+            else if (key === 'country') consolidatedRow[38] = val;
+            else if (key === 'tribe') consolidatedRow[39] = val;
+            else if (key === 'empId') consolidatedRow[40] = val;
+            else if (key === 'hireDate') consolidatedRow[41] = val;
+          }
+        });
+
+        // Match with unmatched Training records
+        let foundTrIdx = -1;
+        for (let t = 1; t < trainingRows.length; t++) {
+          const trRow = trainingRows[t];
+          if (!trRow) continue;
+          const trName = trRow[colTr.name] || '';
+          if (matchNames(hcName, trName)) {
+            foundTrIdx = t;
+            matchedTrIndices.add(t);
+            break;
+          }
+        }
+
+        if (foundTrIdx !== -1) {
+          const trRow = trainingRows[foundTrIdx];
+          Object.entries(colTr).forEach(([key, colIdx]) => {
+            if (colIdx !== -1 && colIdx < trRow.length) {
+              let val = trRow[colIdx];
+              if (key === 'leader') consolidatedRow[65] = val;
+              else if (key === 'name') consolidatedRow[66] = val;
+              else if (key === 'empId') consolidatedRow[67] = val;
+              else if (key === 'email') consolidatedRow[68] = val;
+              else if (key === 'path') consolidatedRow[69] = val;
+              else if (key === 'hireDate') consolidatedRow[70] = val;
+              else if (key === 'enrollDate') consolidatedRow[71] = val;
+              else if (key === 'startDate') consolidatedRow[72] = val;
+              else if (key === 'status') consolidatedRow[73] = val;
+              else if (key === 'progress') consolidatedRow[74] = val;
+              else if (key === 'completionDate') consolidatedRow[75] = val;
+            }
+          });
+        }
+
+        finalRows.push(consolidatedRow);
+      }
+
+      // Incorporate unmatched training rows
+      for (let t = 1; t < trainingRows.length; t++) {
+        if (matchedTrIndices.has(t)) continue;
+        const trRow = trainingRows[t];
+        if (!trRow || trRow.length === 0) continue;
+        const trName = trRow[colTr.name] || '';
+        if (!trName || trName === 'DUMMY ENTRY') continue;
+
+        const consolidatedRow = Array(77).fill(null);
+        Object.entries(colTr).forEach(([key, colIdx]) => {
+          if (colIdx !== -1 && colIdx < trRow.length) {
+            let val = trRow[colIdx];
+            if (key === 'leader') consolidatedRow[65] = val;
+            else if (key === 'name') consolidatedRow[66] = val;
+            else if (key === 'empId') consolidatedRow[67] = val;
+            else if (key === 'email') consolidatedRow[68] = val;
+            else if (key === 'path') consolidatedRow[69] = val;
+            else if (key === 'hireDate') consolidatedRow[70] = val;
+            else if (key === 'enrollDate') consolidatedRow[71] = val;
+            else if (key === 'startDate') consolidatedRow[72] = val;
+            else if (key === 'status') consolidatedRow[73] = val;
+            else if (key === 'progress') consolidatedRow[74] = val;
+            else if (key === 'completionDate') consolidatedRow[75] = val;
+          }
+        });
+
+        finalRows.push(consolidatedRow);
+      }
+
+      const formattedData = [{ row: consolidatedHeaders, index_: 0 }];
+      finalRows.forEach((r, idx) => {
+        formattedData.push({ row: r, index_: idx + 1 });
+      });
+
+      return formattedData;
+    }
+
+    // Main App Container incorporating Google Sheet & Local Excel update components
+    function App() {
+      const [view, setView] = useState('opex');
+      const [integrationOpen, setIntegrationOpen] = useState(false);
+      const [integrationTab, setIntegrationTab] = useState('copypaste');
+      const [pasteMode, setPasteMode] = useState('consolidated');
+      const [syncSource, setSyncSource] = useState('Default Mock Database');
+      const [googleUrl, setGoogleUrl] = useState('');
+      const [loading, setLoading] = useState(false);
+      const [statusMessage, setStatusMessage] = useState('');
+      
+      // Copy-Paste data buffer states
+      const [pasteConsolidated, setPasteConsolidated] = useState('');
+      const [pasteJira, setPasteJira] = useState('');
+      const [pasteHeadcount, setPasteHeadcount] = useState('');
+      const [pasteTraining, setPasteTraining] = useState('');
+
+      // Standard Mock Dataset as default fallback
+      const initialMockData = useMemo(() => {
+        const headers = Array(77).fill(null);
+        headers[0] = "Issue key"; headers[1] = "Issue id"; headers[2] = "Summary"; headers[3] = "Reporter";
+        headers[4] = "Components"; headers[5] = "Status"; headers[6] = "Description"; headers[7] = "Created";
+        headers[8] = "Delayed?"; headers[9] = "Saved / Year (hrs)"; headers[10] = "Saved / Year (FTE)";
+        headers[11] = "Effective Savings"; headers[12] = "Total count"; headers[13] = "Start Date";
+        headers[14] = "End Date"; headers[15] = "Planned End Date"; headers[16] = "Business impact";
+        headers[17] = "Customer impact"; headers[18] = "Assignee"; headers[19] = "Solution";
+        headers[20] = "Blocker Category"; headers[21] = "Stage Gate"; headers[22] = "Case Label";
+        headers[23] = "Concise Description";
+
+        headers[31] = "Leader"; headers[32] = "Full Legal Name"; headers[33] = "Status";
+        headers[34] = "Worker Type"; headers[35] = "Job Family"; headers[36] = "Management Level";
+        headers[37] = "Location"; headers[38] = "Country"; headers[39] = "Department/Tribe";
+        headers[40] = "Employee ID"; headers[41] = "Hire Date";
+
+        headers[65] = "Leader"; headers[66] = "Employee Name"; headers[67] = "Employee ID";
+        headers[68] = "Email"; headers[69] = "Path Title"; headers[70] = "Hire Date";
+        headers[71] = "Learner Enrollment Date"; headers[72] = "Learner Start Date";
+        headers[73] = "Learner Status"; headers[74] = "Progress"; headers[75] = "Learner Completion Date";
+
+        const rows = [
+          [
+            "LSS-101", "1001", "Optimize Box Assembly Line 2", "Andrew Clark", "DE Logistics Squad", "Resolved", 
+            "Redesigned the box layout workflow at Berlin fulfillment center to decrease movement bottlenecks and reduce assembly delay.", 
+            "2026-01-10", "No", 0, 0, 45, 3000, "2026-01-15", "2026-03-10", "2026-03-05", "Decreased packaging lead time by 12%", 
+            "Boxes assembled and packed 2 mins quicker", "Andrew Clark", "Installed continuous conveyor belts", "None", "Define", "Yes", "Box Optimization",
+            ...Array(7).fill(null),
+            "Elena Rostova", "Andrew Clark", "Active", "Employee", "Operational Excellence", "Senior Manager", "Berlin", "Germany", "DE Logistics Squad", "HF-2089", "2023-05-15",
+            ...Array(23).fill(null),
+            "Elena Rostova", "Andrew Clark", "HF-2089", "andrew.clark@hellofresh.com", "Lean Six Sigma Black Belt", "2023-05-15", "2025-06-01", "2025-06-10", "Successful", "100", "2025-12-15"
+          ],
+          [
+            "LSS-102", "1002", "Digital Recipe Card Verification Automation", "Debbie Benitez", "Logistics Tech", "In Progress",
+            "Introducing validation algorithms to cross-reference menu metadata automatically before dispatching recipe prints.", 
+            "2026-02-01", "No", 0, 0, 15, 8000, "2026-02-15", null, "2026-08-30", "Reduced recipe compliance check timelines",
+            "Ensures menu booklet matching matches exact deliveries with zero manual auditing", "Debbie Benitez", "Automated validation script checks", "Tech integration", "Measure", "Yes", "Recipe Quality Automation",
+            ...Array(7).fill(null),
+            "Elena Rostova", "Debbie Benitez", "Active", "Employee", "Product Technology", "Lead Engineer", "Manila", "Philippines", "Logistics Tech", "HF-3490", "2024-02-20",
+            ...Array(23).fill(null),
+            "Elena Rostova", "Debbie Benitez", "HF-3490", "debbie.benitez@hellofresh.com", "Lean Six Sigma Green Belt", "2024-02-20", "2026-01-10", "2026-01-15", "On time", "45", null
+          ],
+          [
+            "LSS-103", "1003", "Route Dynamic Dispatch Optimization", "Marcus Vane", "Supply Chain Ops", "Open",
+            "Consolidating multiple daily truck dispatches in ANZ regional hub through updated transit scheduling tables.",
+            "2026-03-01", "Yes", 0, 0, 60, 4500, "2026-03-10", null, "2026-04-15", "Shaved transit carbon output and logistics overhead",
+            "Faster delivery routing schedules", "Marcus Vane", "Dynamic vehicle routing integration", "Resource bandwidth", "Analyze", "No", "",
+            ...Array(7).fill(null),
+            "Elena Rostova", "Marcus Vane", "Active", "Employee", "Supply Chain Operations", "Manager", "Sydney", "Australia", "Supply Chain Ops", "HF-5510", "2022-11-01",
+            ...Array(23).fill(null),
+            "Elena Rostova", "Marcus Vane", "HF-5510", "marcus.vane@hellofresh.com", "Lean Six Sigma Green Belt", "2022-11-01", "2025-08-10", "2025-08-20", "Successful", "100", "2025-11-02"
+          ],
+          [
+            "LSS-104", "1004", "Reduce Cold Chain Coolant Overfill", "Sarah Jenkins", "Global Procurement", "Done",
+            "Redesigned regional cool pack distribution guidelines to prevent over-packing box volume while securing freshness criteria.",
+            "2026-01-20", "No", 0, 0, 30, 12000, "2026-02-01", "2026-04-12", "2026-04-20", "Saves €180,000 yearly in dry ice expenditures",
+            "Optimized box density for custom packages", "Sarah Jenkins", "Standardized density metrics", "None", "Control", "Yes", "Cold Chain Optimization",
+            ...Array(7).fill(null),
+            "Siddharth Nair", "Sarah Jenkins", "Active", "Employee", "Procurement & Quality", "Coordinator", "New York", "United States", "Global Procurement", "HF-0043", "2025-01-15",
+            ...Array(23).fill(null),
+            "Siddharth Nair", "Sarah Jenkins", "HF-0043", "sarah.jenkins@hellofresh.com", "Lean Six Sigma White Belt", "2025-01-15", "2026-01-22", "2026-02-01", "Successful", "100", "2026-04-12"
+          ],
+          [
+            "LSS-105", "1005", "Inventory Check Cycle Counts Automation", "Liam Gallagher", "Global Procurement", "On Hold",
+            "Moving static manual check sheets to real-time mobile barcodes scanner workflow for fast transit adjustments.",
+            "2026-02-25", "No", 0, 0, 50, 1500, "2026-03-01", null, "2026-05-15", "Decreases administrative cycle-count logging effort",
+            "Provides perfect digital shelf tracking in FC hubs", "Liam Gallagher", "Scanning app integration", "System compatibility issues", "Improve", "No", "",
+            ...Array(7).fill(null),
+            "Siddharth Nair", "Liam Gallagher", "Active", "Employee", "Logistics Operations", "Specialist", "Sydney", "Australia", "Global Procurement", "HF-9811", "2024-09-10",
+            ...Array(23).fill(null),
+            "Siddharth Nair", "Liam Gallagher", "HF-9811", "liam.gallagher@hellofresh.com", "Lean Six Sigma White Belt", "2024-09-10", "2026-03-01", null, "Not yet started", "0", null
+          ]
+        ];
+
+        const finalData = [{ row: headers, index_: 0 }];
+        rows.forEach((r, idx) => {
+          finalData.push({ row: r, index_: idx + 1 });
+        });
+        return finalData;
+      }, []);
+
+      const [data, setData] = useState(initialMockData);
+
+      // 🔄 Auto-load Google Sheet URL if saved in localStorage on startup
+      useEffect(() => {
+        const savedUrl = localStorage.getItem('hellofresh_google_url');
+        if (savedUrl) {
+          setGoogleUrl(savedUrl);
+          fetchGoogleSheetData(savedUrl, true);
+        }
+      }, []);
+
+      // Parser for copy-pasted Tab Separated Values (TSV) from Sheets / Excel
+      const handleCopyPasteImport = (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setStatusMessage("Parsing and mapping pasted spreadsheet grids...");
+
+        try {
+          const parseTSV = (text) => {
+            if (!text || !text.trim()) return [];
+            return text.trim().split('\n').map(line => line.split('\t'));
+          };
+
+          if (pasteMode === 'consolidated') {
+            const masterRows = parseTSV(pasteConsolidated);
+            if (!masterRows.length || masterRows[0].length < 50) {
+              throw new Error("Invalid paste content. Make sure you highlight the entire range of your consolidated 'Canvas Source' sheet.");
+            }
+            
+            // Reconcile and dynamically match the side-by-side columns
+            const sheetsMap = {
+              "Canvas Source": masterRows
+            };
+            const reconciled = reconcileSpreadsheets(sheetsMap);
+            if (reconciled) {
+              setData(reconciled);
+              setSyncSource("Unified Consolidated Paste");
+              setStatusMessage("🟢 Master Consolidated 'Canvas Source' successfully parsed, split, and aligned!");
+              setIntegrationOpen(false);
+            } else {
+              throw new Error("Could not split or reconcile 'Canvas Source'. Check headers.");
+            }
+          } else {
+            const jiraParsed = parseTSV(pasteJira);
+            const headcountParsed = parseTSV(pasteHeadcount);
+            const trainingParsed = parseTSV(pasteTraining);
+
+            if (!jiraParsed.length && !headcountParsed.length && !trainingParsed.length) {
+              throw new Error("Pasted fields are empty. Paste your tabular content or switch to Consolidated sheet mode.");
+            }
+
+            const sheetsMap = {
+              "Database Jira": jiraParsed,
+              "Headcount Tracker": headcountParsed,
+              "White Belt Training": trainingParsed
+            };
+
+            const reconciled = reconcileSpreadsheets(sheetsMap);
+            if (reconciled) {
+              setData(reconciled);
+              setSyncSource("Interactive Paste Input");
+              setStatusMessage("🟢 Copy-pasted data successfully reconciled and updated!");
+              setIntegrationOpen(false);
+            } else {
+              throw new Error("Reconciliation failed. Check that your pasted data includes the header rows.");
+            }
+          }
+        } catch (error) {
+          setStatusMessage(`🔴 Import Failed: ${error.message}`);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      // Fetches standard Google Sheet Share Link and processes Excel sheets dynamically
+      const fetchGoogleSheetData = async (url, isAutoLoad = false) => {
+        if (!url) return;
+        setLoading(true);
+        setStatusMessage(isAutoLoad ? 'Connecting to Google Sheets...' : 'Establishing live handshake...');
+
+        try {
+          let exportUrl = '';
+          
+          if (url.includes('/d/e/')) {
+            const matches = url.match(/\/d\/e\/([a-zA-Z0-9-_]+)/);
+            if (!matches) {
+              throw new Error("Invalid 'Publish to web' URL format.");
+            }
+            const publishId = matches[1];
+            
+            // If they published a specific tab (like gid=255849728), fetch that tab as CSV
+            if (url.includes('gid=')) {
+              const gidMatches = url.match(/gid=([0-9]+)/);
+              const gid = gidMatches ? gidMatches[1] : '0';
+              exportUrl = `https://docs.google.com/spreadsheets/d/e/${publishId}/pub?gid=${gid}&single=true&output=csv`;
+            } else {
+              // Otherwise fetch the whole XLSX document
+              exportUrl = `https://docs.google.com/spreadsheets/d/e/${publishId}/pub?output=xlsx`;
+            }
+          } else {
+            const matches = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
+            if (!matches) {
+              throw new Error("Invalid standard sharing URL format.");
+            }
+            const spreadsheetId = matches[1];
+            exportUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=xlsx`;
+          }
+
+          const response = await fetch(exportUrl);
+          if (!response.ok) {
+            throw new Error("Handshake blocked. Standard Google Sheet links require active sign-in sessions. Please Publish your Sheet to the Web (instructions below) to create a secure CORS-free connection.");
+          }
+
+          if (exportUrl.includes('output=csv')) {
+            const csvText = await response.text();
+            // Parse CSV dynamically
+            const rows = csvText.split('\n').map(line => {
+              // Basic CSV row splitter mapping quotes
+              const result = [];
+              let current = '';
+              let inQuotes = false;
+              for (let i = 0; i < line.length; i++) {
+                const char = line[i];
+                if (char === '"') {
+                  inQuotes = !inQuotes;
+                } else if (char === ',' && !inQuotes) {
+                  result.push(current.trim());
+                  current = '';
+                } else {
+                  current += char;
+                }
+              }
+              result.push(current.trim());
+              return result;
+            });
+
+            const sheetsMap = { "Canvas Source": rows };
+            const reconciled = reconcileSpreadsheets(sheetsMap);
+            if (reconciled) {
+              setData(reconciled);
+              localStorage.setItem('hellofresh_google_url', url);
+              setSyncSource('Google Sheets (Auto-Syncing)');
+              setStatusMessage('🟢 Live Google Sheets Canvas Tab Synced successfully!');
+            } else {
+              throw new Error("Reconciliation failed. Check that your Google Sheet tab column layout matches.");
+            }
+          } else {
+            const arrayBuffer = await response.arrayBuffer();
+            const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+            processWorkbook(workbook);
+            localStorage.setItem('hellofresh_google_url', url);
+            setSyncSource('Google Sheets (Auto-Syncing)');
+            setStatusMessage('🟢 Live Google Sheet Workbook Synced successfully!');
+          }
+        } catch (error) {
+          console.error(error);
+          let errorMsg = `🔴 Sync Failed: ${error.message}`;
+          if (!url.includes('/d/e/')) {
+            errorMsg += ` \n💡 RESOLUTION: Browsers block local file fetches to standard Google Drive links. To make this file sync automatically, follow the simple "Publish to web" method inside Tab 3!`;
+          }
+          setStatusMessage(errorMsg);
+          if (!isAutoLoad) setIntegrationOpen(true);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      // Process workbook from uploader or fetcher
+      const processWorkbook = (workbook) => {
+        const sheetsMap = {};
+        workbook.SheetNames.forEach(sheetName => {
+          const rawRows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1 });
+          if (rawRows.length > 0) {
+            sheetsMap[sheetName] = rawRows;
+          }
+        });
+
+        const reconciled = reconcileSpreadsheets(sheetsMap);
+        if (reconciled) {
+          setData(reconciled);
+        } else {
+          throw new Error("Could not find relevant column sets inside workbook. Check tab titles.");
+        }
+      };
+
+      // Drag-and-drop local Excel file uploads
+      const handleExcelUpload = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        setLoading(true);
+        setStatusMessage("Reading spreadsheet workbook...");
+
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          try {
+            const dataBytes = new Uint8Array(evt.target.result);
+            const workbook = XLSX.read(dataBytes, { type: 'array' });
+            processWorkbook(workbook);
+            setSyncSource(`Excel: ${file.name}`);
+            setStatusMessage('🟢 Workbook integrated!');
+            setIntegrationOpen(false);
+          } catch (err) {
+            setStatusMessage(`🔴 Upload parsing error: ${err.message}`);
+          } finally {
+            setLoading(false);
+          }
+        };
+        reader.readAsArrayBuffer(file);
+      };
+
+      const resetToDefault = () => {
+        setData(initialMockData);
+        setSyncSource('Default Mock Database');
+        setStatusMessage('Reverted to system mockup portfolio.');
+        localStorage.removeItem('hellofresh_google_url');
+        setGoogleUrl('');
+        setPasteJira('');
+        setPasteHeadcount('');
+        setPasteTraining('');
+        setPasteConsolidated('');
+      };
+
+      const updateItem = (index, updatedRow) => {
+        setData(prev => prev.map(item => item.index_ === index ? { ...item, row: updatedRow } : item));
+      };
+
+      const deleteItem = (index) => {
+        setData(prev => prev.filter(item => item.index_ !== index));
+      };
+
+      const insertItem = (index, newRow) => {
+        setData(prev => {
+          const nextIndex = prev.length > 0 ? Math.max(...prev.map(i => i.index_)) + 1 : 1;
+          return [...prev, { row: newRow, index_: nextIndex }];
+        });
+      };
+
+      const navItems = [
+        { id: 'opex', label: 'OPEX CI Dashboard', icon: 'LayoutDashboard' },
+        { id: 'headcount', label: 'Headcount Tracker', icon: 'Users' },
+        { id: 'training', label: 'LSS Training Tracker', icon: 'Award' },
+        { id: 'ideas', label: 'Idea Participation', icon: 'Lightbulb' },
+      ];
+
+      return (
+        <div className="min-h-screen flex flex-col antialiased">
+          
+          {/* HEADER BRANDING BANNER */}
+          <header className="sticky top-0 z-50 bg-[#062115] text-white shadow-lg px-4 md:px-8 py-4 flex flex-wrap items-center justify-between gap-4 border-b border-[#91c13e]/20 backdrop-blur-md bg-opacity-95">
+            <div className="flex items-center gap-3">
+              <div className="bg-[#91c13e] p-2 rounded-xl text-[#062115] shadow-inner flex items-center justify-center">
+                <Icon name="Leaf" className="w-6 h-6 fill-current text-[#062115]" />
+              </div>
+              <div>
+                <span className="font-black text-xl tracking-wider text-white">HELLOFRESH</span>
+                <span className="text-[10px] block text-[#91c13e] font-semibold uppercase tracking-widest mt-0.5">EXCELLENCE PORTAL</span>
+              </div>
+            </div>
+
+            {/* NAV TABS */}
+            <nav className="flex items-center gap-1.5 overflow-x-auto p-1 bg-black/20 rounded-xl scrollbar-none">
+              {navItems.map(({ id, label, icon }) => {
+                const isActive = view === id;
+                return (
+                  <button key={id} onClick={() => setView(id)} className={'flex items-center gap-2 px-4 py-2 rounded-lg font-bold uppercase text-xs tracking-wider transition-all duration-200 shrink-0 ' + (
+                    isActive ? 'bg-[#91c13e] text-[#062115] shadow-md font-extrabold' : 'text-gray-300 hover:text-white hover:bg-white/5'
+                  )} >
+                    <Icon name={icon} className="w-4 h-4" />
+                    <span>{label}</span>
+                  </button>
+                );
+              })}
+            </nav>
+
+            {/* INTEGRATION TOGGLE BUTTON */}
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={() => setIntegrationOpen(!integrationOpen)} 
+                className="bg-emerald-950 hover:bg-emerald-900 text-slate-100 border border-[#91c13e]/30 px-3 py-1.5 rounded-lg text-xs font-black uppercase flex items-center gap-2 tracking-wider transition-all"
+              >
+                <Icon name="RefreshCw" className="w-3.5 h-3.5 text-[#91c13e]" />
+                <span>Sync Data</span>
+              </button>
+            </div>
+          </header>
+
+          {/* DYNAMIC COLLAPSIBLE DATA INTEGRATION PANEL */}
+          {integrationOpen && (
+            <div className="bg-[#0b2b1d] text-white border-b border-[#91c13e]/30 p-6 animate-fade-in shrink-0">
+              <div className="max-w-6xl mx-auto space-y-6">
+                
+                {/* Internal sub-tab selectors */}
+                <div className="flex flex-wrap items-center justify-between gap-4 border-b border-emerald-800 pb-3">
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => setIntegrationTab('copypaste')}
+                      className={'px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ' + (integrationTab === 'copypaste' ? 'bg-[#91c13e] text-[#062115]' : 'text-slate-400 hover:text-white')}
+                    >
+                      🚀 Copy-Paste Data (Easiest)
+                    </button>
+                    <button 
+                      onClick={() => setIntegrationTab('excel')}
+                      className={'px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ' + (integrationTab === 'excel' ? 'bg-[#91c13e] text-[#062115]' : 'text-slate-400 hover:text-white')}
+                    >
+                      📂 Drag & Drop Excel
+                    </button>
+                    <button 
+                      onClick={() => setIntegrationTab('googlesheets')}
+                      className={'px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ' + (integrationTab === 'googlesheets' ? 'bg-[#91c13e] text-[#062115]' : 'text-slate-400 hover:text-white')}
+                    >
+                      🌐 Google Sheet Auto-Sync
+                    </button>
+                  </div>
+
+                  {/* Mode Selector within Copy-Paste Tab */}
+                  {integrationTab === 'copypaste' && (
+                    <div className="bg-emerald-950 p-1 rounded-lg flex items-center gap-1 border border-emerald-800">
+                      <button 
+                        onClick={() => setPasteMode('consolidated')}
+                        className={'px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ' + (pasteMode === 'consolidated' ? 'bg-[#91c13e] text-[#062115]' : 'text-slate-400 hover:text-slate-200')}
+                      >
+                        Consolidated Sheet Range
+                      </button>
+                      <button 
+                        onClick={() => setPasteMode('separate')}
+                        className={'px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ' + (pasteMode === 'separate' ? 'bg-[#91c13e] text-[#062115]' : 'text-slate-400 hover:text-slate-200')}
+                      >
+                        Three Separate Sheets
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* TAB 1: DIRECT COPY-PASTE */}
+                {integrationTab === 'copypaste' && (
+                  <form onSubmit={handleCopyPasteImport} className="space-y-4 animate-fade-in text-xs">
+                    {pasteMode === 'consolidated' ? (
+                      <div className="space-y-3">
+                        <p className="text-slate-300 leading-relaxed font-semibold">
+                          Highlight the cells from <strong className="text-white">A1 to BX200</strong> directly on your consolidated <strong className="text-[#91c13e]">Canvas Source</strong> sheet, copy them (`Ctrl+C`), and paste them directly into the single box below. 
+                        </p>
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] uppercase font-black tracking-wider text-slate-300 block font-bold">Consolidated Canvas Source Range (A1:BX200)</label>
+                          <textarea 
+                            placeholder="Paste columns A to BX from your master consolidated sheet here..." 
+                            value={pasteConsolidated} 
+                            onChange={e => setPasteConsolidated(e.target.value)}
+                            className="w-full bg-[#062115] border border-emerald-800 rounded-2xl p-3 h-48 text-[11px] font-mono outline-none focus:ring-2 focus:ring-[#91c13e] text-slate-200 placeholder-slate-500 font-semibold"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <p className="text-slate-300 leading-relaxed font-semibold">
+                          Highlight and paste each of the three sheet tab ranges independently if you haven't merged them into a master consolidated layout yet.
+                        </p>
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                          
+                          {/* Jira Database Box */}
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] uppercase font-black tracking-wider text-slate-300 block font-bold">1. Jira Database Tab</label>
+                            <textarea 
+                              placeholder="Paste columns from your Database Jira sheet here..." 
+                              value={pasteJira} 
+                              onChange={e => setPasteJira(e.target.value)}
+                              className="w-full bg-[#062115] border border-emerald-800 rounded-xl p-3 h-40 text-[11px] font-mono outline-none focus:ring-2 focus:ring-[#91c13e] text-slate-200 font-semibold"
+                            />
+                          </div>
+
+                          {/* Headcount Box */}
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] uppercase font-black tracking-wider text-slate-300 block font-bold">2. Headcount Tracker Tab</label>
+                            <textarea 
+                              placeholder="Paste columns from your Headcount Tracker sheet here..." 
+                              value={pasteHeadcount} 
+                              onChange={e => setPasteHeadcount(e.target.value)}
+                              className="w-full bg-[#062115] border border-emerald-800 rounded-xl p-3 h-40 text-[11px] font-mono outline-none focus:ring-2 focus:ring-[#91c13e] text-slate-200 font-semibold"
+                            />
+                          </div>
+
+                          {/* LSS Training Box */}
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] uppercase font-black tracking-wider text-slate-300 block font-bold">3. LSS Training Tab</label>
+                            <textarea 
+                              placeholder="Paste columns from your White Belt Training sheet here..." 
+                              value={pasteTraining} 
+                              onChange={e => setPasteTraining(e.target.value)}
+                              className="w-full bg-[#062115] border border-emerald-800 rounded-xl p-3 h-40 text-[11px] font-mono outline-none focus:ring-2 focus:ring-[#91c13e] text-slate-200 font-semibold"
+                            />
+                          </div>
+
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex justify-end pt-2">
+                      <button 
+                        type="submit"
+                        className="bg-[#91c13e] text-[#062115] hover:bg-[#94D500] font-black uppercase text-xs px-6 py-3 rounded-xl transition-all shadow-md font-extrabold tracking-wider"
+                      >
+                        Reconcile & Update Dashboard
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {/* TAB 2: LOCAL EXCEL FILE UPLOAD */}
+                {integrationTab === 'excel' && (
+                  <div className="space-y-4 animate-fade-in text-xs max-w-2xl">
+                    <p className="text-slate-300 leading-relaxed font-semibold">
+                      Have a local offline spreadsheet workbook? Drag and drop it below. The dashboard parses your files directly in your browser without uploading your private metrics to any server.
+                    </p>
+                    <div className="relative border-2 border-dashed border-[#91c13e]/30 rounded-2xl p-8 bg-emerald-950/20 text-center hover:border-[#91c13e]/60 transition-all cursor-pointer">
+                      <input 
+                        type="file" 
+                        accept=".xlsx, .xls, .csv" 
+                        onChange={handleExcelUpload} 
+                        className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                      />
+                      <Icon name="Target" className="w-8 h-8 text-[#91c13e] mx-auto mb-2" />
+                      <span className="font-bold text-slate-100 block">Click or Drop Excel Workbook Here</span>
+                      <span className="text-[10px] text-slate-400 block mt-1">Accepts multiple-sheet xlsx files (Jira database, Headcount Tracker, LSS Training)</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 3: GOOGLE SHEETS LIVE SYNC */}
+                {integrationTab === 'googlesheets' && (
+                  <div className="space-y-4 animate-fade-in text-xs max-w-4xl">
+                    <div className="flex items-center gap-2 text-sm font-black text-[#91c13e] uppercase">
+                      <Icon name="Globe" className="w-5 h-5 text-[#91c13e]" />
+                      <span>Live Google Sheet Connection</span>
+                    </div>
+                    
+                    <div className="bg-emerald-950/40 p-4 rounded-xl border border-emerald-800/40 space-y-2 text-slate-300">
+                      <span className="font-bold text-white block">💡 Zero-Click Auto-Syncing Protocol:</span>
+                      <p>Because your HTML is running locally as a file, standard private sharing URLs are blocked by browser fetch protocols. To sync automatically, you must <strong>Publish your Canvas Source Sheet tab to the Web as a CSV</strong>. This allows the local app to pull latest changes without encountering security blocks:</p>
+                      <ol className="list-decimal list-inside space-y-1.5 ml-1 font-semibold text-slate-200">
+                        <li>Open your tracker in Google Sheets.</li>
+                        <li>Select <strong>File &gt; Share &gt; Publish to web</strong>.</li>
+                        <li>In the pop-up options, change the first dropdown from "Entire Document" to <strong className="text-[#91c13e]">Canvas Source</strong>.</li>
+                        <li>Change the second dropdown from "Web Page" to <strong className="text-[#91c13e]">Comma-separated values (.csv)</strong>.</li>
+                        <li>Click <strong className="text-[#91c13e]">Publish</strong> and copy the URL generated in the box.</li>
+                        <li>Paste that link below and hit "Connect Live". It is saved securely—it will auto-update on every future load!</li>
+                      </ol>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        placeholder="Paste Google Sheets 'Publish to Web' link here..." 
+                        value={googleUrl} 
+                        onChange={e => setGoogleUrl(e.target.value)}
+                        className="bg-[#062115] border border-[#91c13e]/30 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-400 outline-none focus:ring-2 focus:ring-[#91c13e] flex-1 font-mono font-semibold"
+                      />
+                      <button 
+                        onClick={() => fetchGoogleSheetData(googleUrl)}
+                        className="bg-[#91c13e] text-[#062115] hover:bg-[#94D500] font-black uppercase text-xs px-5 py-3 rounded-xl transition-all shadow-md shrink-0 font-extrabold"
+                      >
+                        Connect Live
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Active Data Source Summary footer */}
+                <div className="border-t border-emerald-800/60 pt-4 flex items-center justify-between gap-4 text-xs">
+                  <div>
+                    <span className="text-slate-400 font-bold uppercase tracking-wider block text-[10px]">Active Data Source:</span>
+                    <strong className="text-white text-sm font-extrabold uppercase font-mono">{syncSource}</strong>
+                  </div>
+                  <button 
+                    onClick={resetToDefault} 
+                    className="bg-slate-700 hover:bg-slate-600 text-white font-bold uppercase text-[10px] px-3 py-2 rounded-lg transition-all"
+                  >
+                    Reset mockup
+                  </button>
+                </div>
+
+              </div>
+
+              {/* Loader Spinner & Feedback Banner */}
+              {statusMessage && (
+                <div className="max-w-6xl mx-auto mt-4 px-4 py-2.5 rounded-lg bg-emerald-950/60 border border-[#91c13e]/20 text-xs font-bold font-mono tracking-wide flex items-center justify-between gap-4">
+                  <span className="text-slate-300 leading-relaxed whitespace-pre-line">{statusMessage}</span>
+                  {loading && <Icon name="RefreshCw" className="w-4 h-4 text-[#91c13e] animate-spin shrink-0" />}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Timezone-Safe Regional Bar */}
+          <RegionalRefreshBar view={view} />
+
+          {/* PORTAL VIEWPORT */}
+          <main className="flex-1 w-full max-w-7xl mx-auto p-4 md:p-6 lg:p-8 space-y-6">
+            {view === 'opex' && <OpexCiDashboard data={data} />}
+            {view === 'headcount' && <HeadcountTracker data={data} />}
+            {view === 'training' && (
+              <LssTrainingTracker data={data} updateItem={updateItem} deleteItem={deleteItem} insertItem={insertItem} />
+            )}
+            {view === 'ideas' && <IdeaParticipation data={data} />}
+          </main>
+        </div>
+      );
+    }
+
+    /* ===========================================================================
+       PORTAL CORE VIEWS (re-rendering elements cleanly inside standalone HTML)
+       =========================================================================== */
+       
+    // VIEW 1 — OPEX CI DASHBOARD (sheet: "Database Jira")
+    function OpexCiDashboard({ data }) {
+      const [yearFilter, setYearFilter] = useState('All');
+      const [halfYearFilter, setHalfYearFilter] = useState('All');
+      const [quarterFilter, setQuarterFilter] = useState('All');
+      const [monthFilter, setMonthFilter] = useState('All');
+      const [deptFilter, setDeptFilter] = useState('All');
+      const [searchQuery, setSearchQuery] = useState('');
+
+      const [analyticsTab, setAnalyticsTab] = useState('Conversion');
+      const [initiativeTypeFilter, setInitiativeTypeFilter] = useState('CI');
+
+      const [tableOwnerFilter, setTableOwnerFilter] = useState('All');
+      const [tableStatusFilter, setTableStatusFilter] = useState('All');
+      const [tableHealthFilter, setTableHealthFilter] = useState('All');
+      const [tableCaseLabelFilter, setTableCaseLabelFilter] = useState('All');
+      const [tableStageGateFilter, setTableStageGateFilter] = useState('All');
+
+      const [potentialActualFilter, setPotentialActualFilter] = useState('Potential');
+      const [expandedRow, setExpandedRow] = useState(null);
+
+      const [sortField, setSortField] = useState('savings');
+      const [sortAsc, setSortAsc] = useState(false);
+
+      const headers = useMemo(() => {
+        const headerRow = data.find(r => r.row.some(c => typeof c === 'string' && c.toLowerCase().includes('summary')));
+        return headerRow ? headerRow.row : (data[0]?.row || []);
+      }, [data]);
+
+      const colIndex = useMemo(() => {
+        const idx = (str) => headers.findIndex(h => h?.toString().toLowerCase().includes(str.toLowerCase()));
+        const exactIdx = (str) => headers.findIndex(h => h?.toString() === str);
+
+        const stageGateIdx = findColIndex(headers, "Stage Gate") !== -1 ? findColIndex(headers, "Stage Gate") : (findColIndex(headers, "Custom field (Stage Gate)") !== -1 ? findColIndex(headers, "Custom field (Stage Gate)") : 15);
+        const caseLabelFlagIdx = findColIndex(headers, "Case Label") !== -1 ? findColIndex(headers, "Case Label") : 29;
+        const caseLabelValueIdx = findColIndex(headers, "Concise Description") !== -1 ? findColIndex(headers, "Concise Description") : 30;
+
+        return {
+          reporter: exactIdx("Reporter"),
+          dept: exactIdx("Components"),
+          status: exactIdx("Status"),
+          summary: exactIdx("Summary"),
+          description: exactIdx("Description"),
+          issueKey: exactIdx("Issue key"),
+          issueId: exactIdx("Issue id"),
+          created: exactIdx("Created"),
+          delayed: idx("Delayed?"),
+          savedHrs: idx("Saved / Year (hrs)"),
+          savedFte: idx("Saved / Year (FTE)"),
+          effectiveSavings: idx("Effective Savings"),
+          totalCount: idx("Total count"),
+          startDate: idx("Start Date"),
+          actualEnd: idx("End Date"),
+          plannedEnd: idx("Planned End Date"),
+          businessImpact: idx("Business impact"),
+          customerImpact: idx("Customer impact"),
+          assignee: exactIdx("Assignee"),
+          solution: exactIdx("Solution"),
+          blockerCategory: idx("Blocker Category"),
+          stageGate: stageGateIdx,
+          caseLabelFlag: caseLabelFlagIdx,
+          caseLabelValue: caseLabelValueIdx
+        };
+      }, [headers]);
+
+      const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+      const processedData = useMemo(() => {
+        if (!headers.length) return [];
+        return data.filter(item => {
+          const row = item.row;
+          if (row === headers) return false;
+          const issueIdVal = row[colIndex.issueId];
+          if (issueIdVal === undefined || issueIdVal === null || String(issueIdVal).trim() === '') {
+            return false;
+          }
+          const deptVal = (row[colIndex.dept] || "").toString().trim();
+          if (!deptVal || deptVal.toLowerCase() === "unassigned" || deptVal.toLowerCase().includes("hr software support")) return false;
+          if (!row[colIndex.summary] && !row[colIndex.issueKey]) return false;
+          return true;
+        }).map(item => {
+          const row = item.row;
+          const createdDate = parseDateSafe(row[colIndex.created]);
+          const status = row[colIndex.status] || "Open";
+          const statusLower = status.toLowerCase().trim();
+          const isCurrentPipeline = ['open', 'on hold', 'on-hold', 'in progress', 'reopened'].includes(statusLower);
+          const isSubmitted = ['on hold', 'open', 'reopened', 'in progress', 'on-hold'].includes(statusLower);
+          const isCompleted = ['resolved', 'done'].includes(statusLower);
+          const isClosed = statusLower === 'closed';
+          
+          const parseNum = (v) => {
+            if (typeof v === 'number') return v;
+            if (typeof v === 'string') {
+              const clean = v.replace(/[^0-9.-]/g, '');
+              const n = parseFloat(clean);
+              return isNaN(n) ? 0 : n;
+            }
+            return 0;
+          };
+
+          const rawEffSavings = parseNum(row[colIndex.effectiveSavings]);
+          const rawTotalCount = parseNum(row[colIndex.totalCount]);
+
+          const hoursPerYear = (rawEffSavings * rawTotalCount) / 60;
+          const fteValue = hoursPerYear / 1560;
+          const potentialSavings = fteValue * 75000;
+          
+          const mIdx = createdDate ? createdDate.getMonth() : null;
+          const quarter = mIdx !== null ? Math.floor(mIdx / 3) + 1 : null;
+          const plannedDate = parseDateSafe(row[colIndex.plannedEnd]);
+          const isDelayed = isSubmitted && plannedDate && plannedDate < new Date();
+
+          const rawFlag = String(row[colIndex.caseLabelFlag] || '').toLowerCase().trim();
+          const isFlagYes = ['yes', 'y', 'true', '1'].includes(rawFlag);
+          const caseLabel = isFlagYes ? String(row[colIndex.caseLabelValue] || '').trim() : '';
+
+          const stageGateRaw = String(row[colIndex.stageGate] || '').trim();
+          const stageGate = (isClosed && stageGateRaw) ? stageGateRaw : '';
+
+          const plannedDateVal = parseDateSafe(row[colIndex.plannedEnd]);
+          const projectHealth = isCurrentPipeline ? (!plannedDateVal ? 'ON TRACK' : (plannedDateVal < new Date() ? 'DELAYED' : 'ON TRACK')) : '—';
+
+          return {
+            index_: item.index_,
+            row: row,
+            id: 'init-' + item.index_,
+            summary: row[colIndex.summary] || "Untitled Initiative",
+            dept: row[colIndex.dept] || "N/A",
+            status: status,
+            isSubmitted,
+            isCompleted,
+            isClosed,
+            isCurrentPipeline,
+            lead: row[colIndex.reporter] || "Unknown",
+            savings: potentialSavings,
+            fte: fteValue,
+            isDelayed,
+            year: createdDate ? createdDate.getFullYear() : 'Unknown',
+            month: mIdx !== null ? monthNames[mIdx] : 'Unknown',
+            monthIdx: mIdx,
+            quarter: quarter ? 'Q' + quarter : 'Unknown',
+            issueKey: row[colIndex.issueKey] || 'TBD',
+            assignee: row[colIndex.assignee],
+            startDate: parseDateSafe(row[colIndex.startDate]),
+            endDate: parseDateSafe(row[colIndex.actualEnd]) || parseDateSafe(row[colIndex.plannedEnd]),
+            description: row[colIndex.description],
+            businessImpact: row[colIndex.businessImpact],
+            customerImpact: row[colIndex.customerImpact],
+            solution: row[colIndex.solution],
+            blockerCategory: row[colIndex.blockerCategory],
+            caseLabel,
+            stageGate,
+            projectHealth
+          };
+        });
+      }, [data, colIndex, headers]);
+
+      // Apply Navigation Filters globally
+      const globallyFilteredData = useMemo(() => {
+        return processedData.filter(d => {
+          const matchesYear = yearFilter === 'All' || d.year.toString() === yearFilter;
+          const isH1 = d.quarter === 'Q1' || d.quarter === 'Q2';
+          const isH2 = d.quarter === 'Q3' || d.quarter === 'Q4';
+          const matchesHalfYear = halfYearFilter === 'All' ||
+            (halfYearFilter === 'H1' && isH1) ||
+            (halfYearFilter === 'H2' && isH2);
+          const matchesQuarter = quarterFilter === 'All' || d.quarter === quarterFilter;
+          const matchesMonth = monthFilter === 'All' || d.month === monthFilter;
+          const matchesDept = deptFilter === 'All' || d.dept === deptFilter;
+          const matchesSearch = d.summary.toLowerCase().includes(searchQuery.toLowerCase()) || d.issueKey.toLowerCase().includes(searchQuery.toLowerCase()) || d.lead.toLowerCase().includes(searchQuery.toLowerCase());
+          return matchesYear && matchesHalfYear && matchesQuarter && matchesMonth && matchesDept && matchesSearch;
+        });
+      }, [processedData, yearFilter, halfYearFilter, quarterFilter, monthFilter, deptFilter, searchQuery]);
+
+      const activeCiData = useMemo(() => {
+        return globallyFilteredData.filter(d => !d.isClosed);
+      }, [globallyFilteredData]);
+
+      const nonCiData = useMemo(() => {
+        return globallyFilteredData.filter(d => d.isClosed);
+      }, [globallyFilteredData]);
+
+      const tableOwnerOptions = useMemo(() => ['All', ...new Set(globallyFilteredData.map(d => d.lead))].sort(), [globallyFilteredData]);
+      const tableStatusOptions = useMemo(() => ['All', ...new Set(globallyFilteredData.map(d => d.status))].sort(), [globallyFilteredData]);
+
+      const caseLabelOptions = useMemo(() => {
+        return ['All', ...new Set(globallyFilteredData.map(d => d.caseLabel).filter(Boolean))].sort();
+      }, [globallyFilteredData]);
+
+      const stageGateOptions = useMemo(() => {
+        const closedItems = globallyFilteredData.filter(d => d.isClosed);
+        return ['All', ...new Set(closedItems.map(d => d.stageGate).filter(Boolean))].sort();
+      }, [globallyFilteredData]);
+
+      const filteredActiveData = useMemo(() => {
+        return potentialActualFilter === 'Potential' ? activeCiData : activeCiData.filter(d => d.isCompleted);
+      }, [activeCiData, potentialActualFilter]);
+
+      const stats = useMemo(() => {
+        const pipelineCount = globallyFilteredData.filter(d => d.isCurrentPipeline && !d.isClosed).length;
+        const totalSavings = filteredActiveData.reduce((acc, curr) => acc + curr.savings, 0);
+        const totalFTE = filteredActiveData.reduce((acc, curr) => acc + curr.fte, 0);
+        const delayCount = filteredActiveData.filter(d => d.isDelayed).length;
+
+        let multiplier = 1;
+        let targetGoalText = "Goal: 2.60 FTE saved per quarter";
+        if (monthFilter !== 'All') {
+          multiplier = 1 / 3;
+          targetGoalText = "Goal: 0.87 FTE saved per month";
+        } else if (quarterFilter !== 'All') {
+          multiplier = 1;
+          targetGoalText = "Goal: 2.60 FTE saved per quarter";
+        } else if (halfYearFilter !== 'All') {
+          multiplier = 2;
+          targetGoalText = "Goal: 5.20 FTE saved per half year";
+        } else {
+          multiplier = 4;
+          targetGoalText = "Goal: 10.40 FTE saved per year";
+        }
+
+        const fteTarget = 2.6 * multiplier;
+        const savingsTarget = 195000 * multiplier;
+
+        return {
+          pipelineCount,
+          savings: totalSavings,
+          fte: totalFTE,
+          delayRate: activeCiData.length > 0 ? (delayCount / activeCiData.length) * 100 : 0,
+          fteTarget,
+          savingsTarget,
+          fteProgress: (totalFTE / (fteTarget || 1)) * 100,
+          targetGoalText
+        };
+      }, [globallyFilteredData, filteredActiveData, monthFilter, quarterFilter, halfYearFilter, activeCiData]);
+
+      const momentumData = useMemo(() => {
+        const shortMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        return shortMonths.map((m, i) => {
+          const mItems = activeCiData.filter(d => d.monthIdx === i);
+          return {
+            month: m,
+            Submitted: mItems.filter(d => d.isSubmitted).length,
+            Completed: mItems.filter(d => d.isCompleted).length
+          };
+        });
+      }, [activeCiData]);
+
+      const teamComparison = useMemo(() => {
+        const currentBase = initiativeTypeFilter === 'CI' ? activeCiData : nonCiData;
+        const teams = {};
+        currentBase.forEach(d => {
+          if (!teams[d.dept]) {
+            teams[d.dept] = { dept: d.dept, submitted: 0, completed: 0, closed: 0, fte: 0, savings: 0 };
+          }
+          if (initiativeTypeFilter === 'CI') {
+            if (d.isSubmitted) teams[d.dept].submitted += 1;
+            if (d.isCompleted) teams[d.dept].completed += 1;
+          } else {
+            teams[d.dept].closed += 1;
+          }
+          teams[d.dept].fte += d.fte;
+          teams[d.dept].savings += d.savings;
+        });
+        return Object.values(teams).sort((a, b) => {
+          if (analyticsTab === 'Conversion') {
+            if (initiativeTypeFilter === 'CI') {
+              return (b.submitted + b.completed) - (a.submitted + a.completed);
+            }
+            return b.closed - a.closed;
+          }
+          return b.fte - a.fte;
+        });
+      }, [activeCiData, nonCiData, initiativeTypeFilter, analyticsTab]);
+
+      const maxFteVal = useMemo(() => {
+        return d3.max(teamComparison, t => t.fte) || 1;
+      }, [teamComparison]);
+
+      const portfolioData = useMemo(() => {
+        const filtered = globallyFilteredData.filter(d => {
+          const matchesOwner = tableOwnerFilter === 'All' || d.lead === tableOwnerFilter;
+          const matchesStatus = tableStatusFilter === 'All' || d.status === tableStatusFilter;
+          const matchesHealth = tableHealthFilter === 'All' || (d.isCurrentPipeline && d.projectHealth === tableHealthFilter);
+          const matchesCaseLabel = tableCaseLabelFilter === 'All' || d.caseLabel === tableCaseLabelFilter;
+          const matchesStageGate = tableStageGateFilter === 'All' || d.stageGate === tableStageGateFilter;
+          return matchesOwner && matchesStatus && matchesHealth && matchesCaseLabel && matchesStageGate;
+        });
+        return filtered.sort((a, b) => {
+          let aVal = a[sortField];
+          let bVal = b[sortField];
+          if (typeof aVal === 'string') {
+            return sortAsc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+          }
+          return sortAsc ? (aVal - bVal) : (bVal - aVal);
+        });
+      }, [globallyFilteredData, tableOwnerFilter, tableStatusFilter, tableHealthFilter, tableCaseLabelFilter, tableStageGateFilter, sortField, sortAsc]);
+
+      const yearsOptions = useMemo(() => ['All', ...new Set(processedData.map(d => d.year.toString()).filter(y => y !== 'Unknown' && y !== '1899'))].sort(), [processedData]);
+      const deptsOptions = useMemo(() => ['All', ...new Set(processedData.map(d => d.dept))].sort(), [processedData]);
+
+      const toggleSort = (field) => {
+        if (sortField === field) {
+          setSortAsc(!sortAsc);
+        } else {
+          setSortField(field);
+          setSortAsc(false);
+        }
+      };
+
+      const potActToggle = (
+        <div className="bg-slate-100 p-0.5 rounded-lg flex gap-0.5 shrink-0 ml-1">
+          <button onClick={(e) => { e.stopPropagation(); setPotentialActualFilter('Potential'); }} className={'px-1.5 py-0.5 rounded-md text-[8px] font-black uppercase transition-all ' + (potentialActualFilter === 'Potential' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600')}>Pot.</button>
+          <button onClick={(e) => { e.stopPropagation(); setPotentialActualFilter('Actual'); }} className={'px-1.5 py-0.5 rounded-md text-[8px] font-black uppercase transition-all ' + (potentialActualFilter === 'Actual' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600')}>Act.</button>
+        </div>
+      );
+
+      return (
+        <div className="space-y-6 animate-fade-in">
+          {/* Sub-header Filter controls */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-black text-[#062115] tracking-tight">OPEX CI Dashboard</h1>
+              <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-1">Continuous Improvement Portfolio</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+              <select value={yearFilter} onChange={e => setYearFilter(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-slate-700 outline-none focus:ring-2 focus:ring-[#91c13e] cursor-pointer">
+                <option value="All">All Years</option>
+                {yearsOptions.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+              <select value={quarterFilter} onChange={e => setQuarterFilter(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-slate-700 outline-none focus:ring-2 focus:ring-[#91c13e] cursor-pointer">
+                <option value="All">All Quarters</option>
+                <option value="Q1">Q1</option>
+                <option value="Q2">Q2</option>
+                <option value="Q3">Q3</option>
+                <option value="Q4">Q4</option>
+              </select>
+              <select value={halfYearFilter} onChange={e => setHalfYearFilter(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-slate-700 outline-none focus:ring-2 focus:ring-[#91c13e] cursor-pointer">
+                <option value="All">All Half Years</option>
+                <option value="H1">H1</option>
+                <option value="H2">H2</option>
+              </select>
+              <select value={monthFilter} onChange={e => setMonthFilter(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-slate-700 outline-none focus:ring-2 focus:ring-[#91c13e] cursor-pointer">
+                <option value="All">All Months</option>
+                {monthNames.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+              <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#0f172a] outline-none focus:ring-2 focus:ring-[#91c13e] cursor-pointer">
+                <option value="All">All Teams</option>
+                {deptsOptions.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+              <div className="relative flex-1 lg:flex-none">
+                <Icon name="Search" className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input type="text" placeholder="SEARCH PORTFOLIO..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-xs font-bold tracking-wider text-slate-700 placeholder-slate-400 uppercase outline-none focus:ring-2 focus:ring-[#91c13e] w-full lg:w-48" />
+              </div>
+            </div>
+          </div>
+
+          {/* Five Metrics KPI Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            <MetricCard label="CURRENT PIPELINE" value={stats.pipelineCount} formula="Active Projects" icon={<Icon name="Clock" className="w-5 h-5 text-emerald-600" />} />
+            <MetricCard label={<div className="flex items-center gap-1"><span>{potentialActualFilter === 'Potential' ? 'Potential' : 'Actual'} Savings</span> {potActToggle}</div>} value={'€' + Math.round(stats.savings).toLocaleString()} formula="Sum of FTE x 75,000 euros" color={stats.fteProgress >= 96 ? 'text-[#062115]' : 'text-[#e11d48]'} icon={<Icon name="TrendingUp" className="w-5 h-5 text-lime-600" />} />
+            <MetricCard label={<div className="flex items-center gap-1"><span>{potentialActualFilter === 'Potential' ? 'FTE Yield' : 'Actual FTE Yield'}</span> {potActToggle}</div>} value={stats.fte.toFixed(2)} formula="Sum of (mins x count / 60) / 1560" color={stats.fteProgress >= 96 ? 'text-[#062115]' : 'text-[#e11d48]'} icon={<Icon name="Users" className="w-5 h-5 text-indigo-600" />} />
+            <MetricCard label="Efficiency Target" value={Math.round(stats.fteProgress) + '%'} sub={stats.targetGoalText} secondarySub={'Target: €' + Math.round(stats.savingsTarget).toLocaleString() + ' | Target: ' + stats.fteTarget.toFixed(2) + ' FTE'} showProgress progress={stats.fteProgress} color={stats.fteProgress >= 96 ? 'text-[#059669]' : stats.fteProgress >= 80 ? 'text-amber-500' : 'text-rose-600'} progressColor={stats.fteProgress >= 96 ? 'bg-[#059669]' : stats.fteProgress >= 80 ? 'bg-amber-500' : 'bg-rose-500'} icon={<Icon name="Target" className={'w-5 h-5 ' + (stats.fteProgress >= 96 ? 'text-[#059669]' : stats.fteProgress >= 80 ? 'text-amber-500' : 'text-rose-600')} />} />
+            <MetricCard label="Project Health" value={Math.round(stats.delayRate) + '%'} formula="Delayed / total visible x 100" color={stats.delayRate > 20 ? 'text-rose-600' : 'text-[#062115]'} icon={<Icon name="AlertTriangle" className="w-5 h-5 text-amber-500" />} />
+          </div>
+
+          {/* Graphical Sections */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Initiative Momentum (Line Chart) */}
+            <div className="lg:col-span-7 bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col">
+              <div className="flex flex-wrap justify-between items-center mb-6 gap-2">
+                <div>
+                  <h2 className="text-lg font-black text-[#062115] tracking-tight">Initiative Momentum</h2>
+                  <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-1">Submission vs completion flow</p>
+                </div>
+                <div className="flex items-center gap-4 text-[10px] font-black uppercase tracking-wider text-slate-500">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded-full bg-[#cbd5e1] inline-block"></span>
+                    <span>Submitted</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded-full bg-[#91c13e] inline-block"></span>
+                    <span>Completed</span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex-1 min-h-[280px]">
+                <MomentumD3Chart data={momentumData} />
+              </div>
+            </div>
+
+            {/* Team Performance progress comparison panel */}
+            <div className="lg:col-span-5 bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col">
+              <div className="flex flex-wrap justify-between items-center mb-4 gap-2">
+                <div>
+                  <h2 className="text-lg font-black text-[#062115] tracking-tight">Team Performance</h2>
+                  <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-1">Yield metrics by component</p>
+                </div>
+                <div className="bg-slate-100 p-1 rounded-xl flex gap-1">
+                  <button onClick={() => setAnalyticsTab('Conversion')} className={'px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all ' + (analyticsTab === 'Conversion' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600')}>
+                    Conversion
+                  </button>
+                  <button onClick={() => setAnalyticsTab('FteSavings')} className={'px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all ' + (analyticsTab === 'FteSavings' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600')}>
+                    FTE Savings
+                  </button>
+                </div>
+              </div>
+
+              {/* Local Toggle for Active CI vs Closed logs */}
+              <div className="flex items-center gap-2 mb-4 border-b border-slate-100 pb-3">
+                <button onClick={() => setInitiativeTypeFilter('CI')} className={'text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-xl border transition-all ' + (initiativeTypeFilter === 'CI' ? 'bg-[#062115] text-white border-[#062115]' : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100')}>
+                  ACTIVE CI
+                </button>
+                <button onClick={() => setInitiativeTypeFilter('Non-CI')} className={'text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-xl border transition-all ' + (initiativeTypeFilter === 'Non-CI' ? 'bg-[#062115] text-white border-[#062115]' : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100')}>
+                  NON CI (CLOSED PROJECTS)
+                </button>
+              </div>
+
+              <div className="space-y-4 overflow-y-auto max-h-[290px] pr-2 flex-1 scrollbar-none">
+                {teamComparison.slice(0, 10).map((item) => {
+                  let pct = 0;
+                  let details = "";
+                  let rateLabel = "";
+                  if (analyticsTab === 'Conversion') {
+                    if (initiativeTypeFilter === 'CI') {
+                      const total = item.submitted + item.completed;
+                      pct = total > 0 ? (item.completed / total) * 100 : 0;
+                      details = item.completed + " / " + total + " resolved";
+                      rateLabel = Math.round(pct) + "% Yield";
+                    } else {
+                      pct = 100;
+                      details = item.closed + " logs";
+                      rateLabel = "Closed";
+                    }
+                  } else {
+                    pct = maxFteVal > 0 ? (item.fte / maxFteVal) * 100 : 0;
+                    details = item.fte.toFixed(2) + " FTE";
+                    rateLabel = "€" + Math.round(item.savings).toLocaleString();
+                  }
+                  return (
+                    <div key={item.dept} className="space-y-1">
+                      <div className="flex justify-between items-center text-xs font-bold text-slate-700 uppercase tracking-wide">
+                        <span className="truncate max-w-[180px]">{item.dept}</span>
+                        <span className="text-[10px] font-black text-slate-400">{details}</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                          <div className="bg-[#91c13e] h-full rounded-full transition-all duration-500" style={{ width: pct + '%' }} />
+                        </div>
+                        <span className="text-[10px] font-black text-slate-800 bg-slate-100 px-2 py-0.5 rounded-md min-w-[75px] text-center shrink-0">
+                          {rateLabel}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+                {teamComparison.length === 0 && (
+                  <div className="text-center py-10 text-slate-400 font-bold uppercase tracking-wider text-xs">
+                    No matching performance logs found
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Operational Excellence Portfolio Table */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+            <div className="px-6 py-5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-black text-[#062115] tracking-tight">Operational Excellence Portfolio</h2>
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-1">Strategic track log index</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <select value={tableOwnerFilter} onChange={e => setTableOwnerFilter(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold uppercase tracking-wider text-slate-700 outline-none focus:ring-2 focus:ring-[#91c13e] cursor-pointer">
+                  <option value="All">All Owners</option>
+                  {tableOwnerOptions.filter(o => o !== 'All').map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+                <select value={tableStatusFilter} onChange={e => setTableStatusFilter(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold uppercase tracking-wider text-[#0f172a] outline-none focus:ring-2 focus:ring-[#91c13e] cursor-pointer">
+                  <option value="All">All Statuses</option>
+                  {tableStatusOptions.filter(s => s !== 'All').map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <select value={tableHealthFilter} onChange={e => setTableHealthFilter(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold uppercase tracking-wider text-slate-700 outline-none focus:ring-2 focus:ring-[#91c13e] cursor-pointer">
+                  <option value="All">All Health</option>
+                  <option value="ON TRACK">ON TRACK</option>
+                  <option value="DELAYED">DELAYED</option>
+                </select>
+                <select value={tableCaseLabelFilter} onChange={e => setTableCaseLabelFilter(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold uppercase tracking-wider text-slate-700 outline-none focus:ring-2 focus:ring-[#91c13e] cursor-pointer">
+                  <option value="All">All Case Labels</option>
+                  {caseLabelOptions.filter(l => l !== 'All').map(l => <option key={l} value={l}>{l}</option>)}
+                </select>
+                <select value={tableStageGateFilter} onChange={e => setTableStageGateFilter(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold uppercase tracking-wider text-slate-700 outline-none focus:ring-2 focus:ring-[#91c13e] cursor-pointer">
+                  <option value="All">All Stage Gates</option>
+                  {stageGateOptions.filter(g => g !== 'All').map(g => <option key={g} value={g}>{g}</option>)}
+                </select>
+                <span className="bg-emerald-50 text-[#062115] text-xs font-black uppercase tracking-wider px-3 py-2 rounded-xl">
+                  {portfolioData.length} Live Items
+                </span>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50/50 text-slate-400 font-bold uppercase text-[10px] tracking-widest">
+                    <th className="py-4 px-6 w-32 cursor-pointer select-none hover:text-[#062115]" onClick={() => toggleSort('issueKey')}>
+                      <div className="flex items-center gap-1">
+                        Issue Key <Icon name="ArrowUpDown" className="w-3 h-3" />
+                      </div>
+                    </th>
+                    <th className="py-4 px-4 cursor-pointer select-none hover:text-[#062115]" onClick={() => toggleSort('summary')}>
+                      <div className="flex items-center gap-1">
+                        Summary <Icon name="ArrowUpDown" className="w-3 h-3" />
+                      </div>
+                    </th>
+                    <th className="py-4 px-4 w-44 cursor-pointer select-none hover:text-[#062115]" onClick={() => toggleSort('dept')}>
+                      <div className="flex items-center gap-1">
+                        Squad <Icon name="ArrowUpDown" className="w-3 h-3" />
+                      </div>
+                    </th>
+                    <th className="py-4 px-4 w-44 cursor-pointer select-none hover:text-[#062115]" onClick={() => toggleSort('lead')}>
+                      <div className="flex items-center gap-1">
+                        Owner <Icon name="ArrowUpDown" className="w-3 h-3" />
+                      </div>
+                    </th>
+                    <th className="py-4 px-4 w-32 text-center cursor-pointer select-none hover:text-[#062115]" onClick={() => toggleSort('status')}>
+                      <div className="flex items-center justify-center gap-1">
+                        Status <Icon name="ArrowUpDown" className="w-3 h-3" />
+                      </div>
+                    </th>
+                    <th className="py-4 px-4 w-36 text-center cursor-pointer select-none hover:text-[#062115]" onClick={() => toggleSort('caseLabel')}>
+                      <div className="flex items-center justify-center gap-1">
+                        Case Label <Icon name="ArrowUpDown" className="w-3 h-3" />
+                      </div>
+                    </th>
+                    <th className="py-4 px-4 w-36 text-center cursor-pointer select-none hover:text-[#062115]" onClick={() => toggleSort('stageGate')}>
+                      <div className="flex items-center justify-center gap-1">
+                        Stage Gate <Icon name="ArrowUpDown" className="w-3 h-3" />
+                      </div>
+                    </th>
+                    <th className="py-4 px-4 w-40 text-right cursor-pointer select-none hover:text-[#062115]" onClick={() => toggleSort('savings')}>
+                      <div className="flex items-center justify-end gap-1">
+                        Potential Savings <Icon name="ArrowUpDown" className="w-3 h-3" />
+                      </div>
+                    </th>
+                    <th className="py-4 px-6 w-40 text-right cursor-pointer select-none hover:text-[#062115]" onClick={() => toggleSort('fte')}>
+                      <div className="flex items-center justify-end gap-1">
+                        FTE Savings <Icon name="ArrowUpDown" className="w-3 h-3" />
+                      </div>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {portfolioData.map((row) => {
+                    const isExpanded = expandedRow === row.id;
+                    return (
+                      <React.Fragment key={row.id}>
+                        <tr onClick={() => setExpandedRow(isExpanded ? null : row.id)} className={'cursor-pointer hover:bg-slate-50/40 transition-colors ' + (isExpanded ? 'bg-slate-50/30' : '')}>
+                          <td className="py-4 px-6 font-bold text-slate-800 text-xs tracking-wider">
+                            <div className="flex items-center gap-1.5">
+                              <Icon name="ChevronRight" className={'w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ' + (isExpanded ? 'rotate-90 text-[#91c13e]' : '')} />
+                              <span>{row.issueKey}</span>
+                            </div>
+                          </td>
+                          <td className="py-4 px-4 text-xs font-bold text-slate-700 truncate max-w-sm">
+                            {row.summary}
+                          </td>
+                          <td className="py-4 px-4 text-xs text-slate-600 truncate uppercase font-bold tracking-wide">
+                            {row.dept}
+                          </td>
+                          <td className="py-4 px-4 text-xs text-slate-500 font-semibold">
+                            {row.lead}
+                          </td>
+                          <td className="py-4 px-4 text-center">
+                            <span className={'inline-block px-2.5 py-1 text-[9px] font-black uppercase tracking-wider rounded-lg border ' + (row.isCompleted ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200')}>
+                              {row.status}
+                            </span>
+                          </td>
+                          <td className="py-4 px-4 text-center">
+                            {row.caseLabel ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider rounded-lg border bg-indigo-50 text-indigo-700 border-indigo-200">
+                                <Icon name="Tag" className="w-3 h-3 text-indigo-600" />
+                                {row.caseLabel}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">—</span>
+                            )}
+                          </td>
+                          <td className="py-4 px-4 text-center">
+                            {row.stageGate ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider rounded-lg border" style={{ backgroundColor: '#f3f6e8', color: '#4d6400', borderColor: '#d9e4b8' }}>
+                                <Icon name="GitBranch" className="w-3 h-3" style={{ color: '#4d6400' }} />
+                                {row.stageGate}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">—</span>
+                            )}
+                          </td>
+                          <td className="py-4 px-4 text-right text-xs font-black text-[#91c13e]">
+                            €{Math.round(row.savings).toLocaleString()}
+                          </td>
+                          <td className="py-4 px-6 text-right text-xs font-black text-slate-700">
+                            {row.fte.toFixed(2)} FTE
+                          </td>
+                        </tr>
+                        {isExpanded && (
+                          <tr>
+                            <td colSpan={9} className="bg-slate-50/20 px-6 py-5 border-t border-b border-slate-100 animate-fade-in">
+                              <div className="grid grid-cols-1 md:grid-cols-12 gap-6 text-xs">
+                                <div className="md:col-span-7 space-y-3">
+                                  <div>
+                                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Strategic Description</span>
+                                    <p className="text-slate-600 leading-relaxed font-semibold mt-1">
+                                      {row.description || 'No detailed objectives or description provided for this initiative.'}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Solution</span>
+                                    <p className="text-slate-600 leading-relaxed font-semibold mt-1">
+                                      {row.solution || 'No solution documented for this initiative.'}
+                                    </p>
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-4 pt-2">
+                                    <div>
+                                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Initiation Date</span>
+                                      <p className="font-bold text-slate-700 mt-0.5">
+                                        {row.startDate ? row.startDate.toLocaleDateString() : 'Pending verification'}
+                                      </p>
+                                    </div>
+                                    <div>
+                                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Project End Date</span>
+                                      <p className="font-bold text-slate-700 mt-0.5">
+                                        {row.endDate ? row.endDate.toLocaleDateString() : 'N/A'}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="md:col-span-5 bg-white rounded-xl p-4 border border-slate-100 shadow-sm space-y-4">
+                                  <div>
+                                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Business Impact Goal</span>
+                                    <div className="flex items-center gap-2 mt-1 bg-slate-50 px-3 py-2 rounded-lg border border-slate-100">
+                                      <Icon name="Shield" className="w-4 h-4 text-emerald-600" />
+                                      <span className="font-bold text-slate-700">{row.businessImpact || 'Efficiency Gain'}</span>
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Customer Experience Impact</span>
+                                    <div className="flex items-center gap-2 mt-1 bg-slate-50 px-3 py-2 rounded-lg border border-slate-100">
+                                      <Icon name="Info" className="w-4 h-4 text-indigo-600" />
+                                      <span className="font-semibold text-slate-600 truncate">{row.customerImpact || 'Internal Excellence'}</span>
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Blocker Category</span>
+                                    <div className="flex items-center gap-2 mt-1 bg-slate-50 px-3 py-2 rounded-lg border border-slate-100">
+                                      <Icon name="Tag" className="w-4 h-4 text-[#91c13e]" />
+                                      <span className="font-semibold text-slate-600 truncate">{row.blockerCategory || 'No blocker category specified.'}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                  {portfolioData.length === 0 && (
+                    <tr>
+                      <td colSpan={9} className="text-center py-10 text-slate-400 font-bold uppercase tracking-wider text-xs">
+                        No matching logs found
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // VIEW 2 — HEADCOUNT TRACKER
+    function HeadcountTracker({ data }) {
+      const [searchQuery, setSearchQuery] = useState('');
+      const [leaderFilter, setLeaderFilter] = useState('All');
+      const [statusFilter, setStatusFilter] = useState('All');
+      const [countryFilter, setCountryFilter] = useState('All');
+
+      const headers = useMemo(() => data[0]?.row || [], [data]);
+
+      const col = useMemo(() => {
+        return {
+          leader: findColIndex(headers, "Leader", 31, 63),
+          name: findColIndex(headers, "Full Legal Name", 31, 63),
+          status: findColIndex(headers, "Status", 31, 63),
+          workerType: findColIndex(headers, "Worker Type", 31, 63),
+          jobFamily: findColIndex(headers, "Job Family", 31, 63),
+          level: findColIndex(headers, "Management Level", 31, 63),
+          location: findColIndex(headers, "Location", 31, 63),
+          country: findColIndex(headers, "Country", 31, 63),
+          tribe: findColIndex(headers, "Department/Tribe", 31, 63),
+          empId: findColIndex(headers, "Employee ID", 31, 63),
+          hireDate: findColIndex(headers, "Hire Date", 31, 63),
+        };
+      }, [headers]);
+
+      const processedRows = useMemo(() => {
+        if (data.length <= 1) return [];
+        return data.slice(1)
+          .filter(item => {
+            const row = item.row;
+            const name = safeVal(row, col.name);
+            return name && name !== 'DUMMY ENTRY' && name.trim() !== '';
+          })
+          .map(item => {
+            const row = item.row;
+            return {
+              id: 'hc-' + item.index_,
+              index_: item.index_,
+              name: safeVal(row, col.name),
+              empId: safeVal(row, col.empId) || '—',
+              leader: safeVal(row, col.leader) || 'Unassigned',
+              jobFamily: safeVal(row, col.jobFamily) || '—',
+              level: safeVal(row, col.level) || '—',
+              status: safeVal(row, col.status) || 'Active',
+              workerType: safeVal(row, col.workerType) || 'Employee',
+              location: safeVal(row, col.location) || '—',
+              country: safeVal(row, col.country) || '—',
+              tribe: safeVal(row, col.tribe) || 'Unspecified',
+              hireDate: parseDateSafe(safeVal(row, col.hireDate)),
+            };
+          });
+      }, [data, col]);
+
+      const stats = useMemo(() => {
+        const total = processedRows.length;
+        const active = processedRows.filter(r => r.status.toLowerCase().trim() === 'active').length;
+        const onLeave = processedRows.filter(r => r.status.toLowerCase().trim() === 'on leave').length;
+        const contingent = processedRows.filter(r => r.workerType.toLowerCase().includes('contingent')).length;
+        const countries = new Set(processedRows.map(r => r.country).filter(Boolean)).size;
+        return { total, active, onLeave, contingent, countries };
+      }, [processedRows]);
+
+      const leaderTeams = useMemo(() => {
+        const map = {};
+        processedRows.forEach(r => {
+          if (!map[r.leader]) {
+            map[r.leader] = { name: r.leader, total: 0, active: 0 };
+          }
+          map[r.leader].total++;
+          if (r.status.toLowerCase().trim() === 'active') {
+            map[r.leader].active++;
+          }
+        });
+        return Object.values(map).sort((a, b) => b.total - a.total);
+      }, [processedRows]);
+
+      const maxLeaderTeam = useMemo(() => {
+        return d3.max(leaderTeams, l => l.total) || 1;
+      }, [leaderTeams]);
+
+      const tribeDist = useMemo(() => {
+        const map = {};
+        processedRows.forEach(r => {
+          map[r.tribe] = (map[r.tribe] || 0) + 1;
+        });
+        return Object.entries(map)
+          .map(([name, count]) => ({ name, count }))
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 6);
+      }, [processedRows]);
+
+      const filteredRows = useMemo(() => {
+        return processedRows.filter(r => {
+          const q = searchQuery.toLowerCase();
+          const matchSearch = q === '' || r.name.toLowerCase().includes(q) || r.empId.toLowerCase().includes(q) || r.leader.toLowerCase().includes(q);
+          const matchLeader = leaderFilter === 'All' || r.leader === leaderFilter;
+          const matchStatus = statusFilter === 'All' || r.status === statusFilter;
+          const matchCountry = countryFilter === 'All' || r.country === countryFilter;
+          return matchSearch && matchLeader && matchStatus && matchCountry;
+        });
+      }, [processedRows, searchQuery, leaderFilter, statusFilter, countryFilter]);
+
+      const leadersList = useMemo(() => ['All', ...new Set(processedRows.map(r => r.leader))].sort(), [processedRows]);
+      const statusesList = useMemo(() => ['All', ...new Set(processedRows.map(r => r.status))].sort(), [processedRows]);
+      const countriesList = useMemo(() => ['All', ...new Set(processedRows.map(r => r.country))].sort(), [processedRows]);
+
+      return (
+        <div className="space-y-6 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-black text-[#062115] tracking-tight">Headcount Tracker</h1>
+              <p className="text-sm text-slate-500 font-semibold uppercase tracking-wider mt-1">People Function workforce overview</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+              <select value={leaderFilter} onChange={e => setLeaderFilter(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-slate-700 outline-none focus:ring-2 focus:ring-[#91c13e] cursor-pointer">
+                <option value="All">All Leaders</option>
+                {leadersList.filter(l => l !== 'All').map(l => <option key={l} value={l}>{l}</option>)}
+              </select>
+              <select value={statusFilter} onChange={e => setTransitionState(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-slate-700 outline-none focus:ring-2 focus:ring-[#91c13e] cursor-pointer">
+                <option value="All">All Statuses</option>
+                {statusesList.filter(s => s !== 'All').map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <select value={countryFilter} onChange={e => setCountryFilter(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#0f172a] outline-none focus:ring-2 focus:ring-[#91c13e] cursor-pointer">
+                <option value="All">All Countries</option>
+                {countriesList.filter(c => c !== 'All').map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <div className="relative flex-1 lg:flex-none">
+                <Icon name="Search" className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input type="text" placeholder="SEARCH PERSONNEL..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-xs font-bold tracking-wider text-slate-700 placeholder-slate-400 uppercase outline-none focus:ring-2 focus:ring-[#91c13e] w-full lg:w-56" />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <MetricCard label="Total Headcount" value={stats.total} sub="Full workforce size" icon={<Icon name="Users" className="text-slate-600" />} />
+            <MetricCard label="Active Personnel" value={stats.active} sub="Currently on duty" color="text-[#91c13e]" icon={<Icon name="CheckCircle2" className="text-[#91c13e]" />} />
+            <MetricCard label="On Leave" value={stats.onLeave} sub="Medical / Parental" color="text-amber-500" icon={<Icon name="Clock" className="text-amber-500" />} />
+            <MetricCard label="Contingent Worker" value={stats.contingent} sub="External contractors" icon={<Icon name="Briefcase" className="text-indigo-600" />} />
+            <MetricCard label="Global Locations" value={stats.countries} sub="Operational Hubs" icon={<Icon name="MapPin" className="text-rose-500" />} />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div className="lg:col-span-7 bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col">
+              <div>
+                <h2 className="text-lg font-black text-[#062115] tracking-tight">Team Size by Leader</h2>
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-1">Direct reports per operational leader (click to filter table)</p>
+              </div>
+              <div className="space-y-4 mt-6 overflow-y-auto max-h-[300px] pr-2 flex-1 scrollbar-none">
+                {leaderTeams.slice(0, 8).map(leader => {
+                  const isCurrentFilter = leaderFilter === leader.name;
+                  const pct = Math.min(Math.round((leader.total / maxLeaderTeam) * 100), 100);
+                  return (
+                    <div key={leader.name} onClick={() => setLeaderFilter(isCurrentFilter ? 'All' : leader.name)} className={'p-3 rounded-xl border transition-all cursor-pointer flex flex-col gap-2 ' + (isCurrentFilter ? 'border-[#91c13e] bg-[#f8fbf6]' : 'border-slate-100 hover:border-slate-200 hover:bg-slate-50/50')}>
+                      <div className="flex justify-between items-center text-xs font-bold uppercase tracking-wider">
+                        <span className="text-slate-800 font-black">{leader.name}</span>
+                        <span className="text-slate-500 font-semibold">{leader.total} reports ({leader.active} active)</span>
+                      </div>
+                      <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                        <div className="bg-[#91c13e] h-full" style={{ width: pct + '%' }}></div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="lg:col-span-5 bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col justify-between">
+              <div>
+                <h2 className="text-lg font-black text-[#062115] tracking-tight">Department Distribution</h2>
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-1">DEPARTMENTS by headcount</p>
+              </div>
+              <div className="space-y-4 mt-6 flex-1 flex flex-col justify-center">
+                {tribeDist.map((tribe, index) => {
+                  const colors = ['bg-[#91c13e]', 'bg-indigo-500', 'bg-amber-400', 'bg-rose-500', 'bg-sky-400', 'bg-emerald-500'];
+                  const pct = stats.total > 0 ? Math.round((tribe.count / stats.total) * 100) : 0;
+                  return (
+                    <div key={tribe.name} className="flex items-center justify-between gap-4 text-xs">
+                      <div className="flex items-center gap-2.5 truncate max-w-[240px]">
+                        <span className={'w-3 h-3 rounded-full ' + (colors[index] || 'bg-slate-300')}></span>
+                        <span className="font-bold text-slate-700 uppercase tracking-wide truncate">{tribe.name}</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-slate-400 font-bold">{tribe.count} headcount</span>
+                        <span className="font-black text-slate-800 bg-slate-100 px-2 py-1 rounded-md">{pct}%</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Table */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+            <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-black text-[#062115] tracking-tight">Employee Directory</h2>
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-1">Internal headcount index</p>
+              </div>
+              <span className="bg-emerald-50 text-[#062115] text-xs font-black uppercase tracking-wider px-3 py-1.5 rounded-xl">
+                {filteredRows.length} MATCHES
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50/50 text-slate-400 font-bold uppercase text-[10px] tracking-widest">
+                    <th className="py-4 px-6">Employee & ID</th>
+                    <th className="py-4 px-4">Direct Leader</th>
+                    <th className="py-4 px-4">Job Family</th>
+                    <th className="py-4 px-4">Management Level</th>
+                    <th className="py-4 px-4 text-center">Status</th>
+                    <th className="py-4 px-4">Location</th>
+                    <th className="py-4 px-6">Hire Date</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs">
+                  {filteredRows.map(row => (
+                    <tr key={row.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="py-4 px-6 font-bold text-slate-800">
+                        <div className="flex flex-col">
+                          <span className="font-extrabold text-slate-800">{row.name}</span>
+                          <span className="text-[10px] text-slate-400 uppercase font-black tracking-wider mt-0.5">ID: {row.empId}</span>
+                        </div>
+                      </td>
+                      <td className="py-4 px-4 font-bold text-slate-700">{row.leader}</td>
+                      <td className="py-4 px-4 text-slate-500 font-semibold">{row.jobFamily}</td>
+                      <td className="py-4 px-4">
+                        <span className="bg-slate-100 text-slate-700 font-bold uppercase px-2 py-1 rounded-md text-[10px] tracking-wide">
+                          {row.level}
+                        </span>
+                      </td>
+                      <td className="py-4 px-4 text-center">
+                        <span className={'inline-block px-2.5 py-1 text-[9px] font-black uppercase tracking-wider rounded-lg border ' + (row.status.toLowerCase().trim() === 'active' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200')}>
+                          {row.status}
+                        </span>
+                      </td>
+                      <td className="py-4 px-4 font-semibold text-slate-600">
+                        <div className="flex items-center gap-1.5">
+                          <Icon name="MapPin" className="w-3.5 h-3.5 text-slate-400" />
+                          <span>{row.location}</span>
+                        </div>
+                      </td>
+                      <td className="py-4 px-6 font-bold text-slate-700">
+                        <div className="flex items-center gap-1.5">
+                          <Icon name="Calendar" className="w-3.5 h-3.5 text-slate-400" />
+                          <span>{row.hireDate ? row.hireDate.toLocaleDateString() : '—'}</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredRows.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="text-center py-8 text-slate-400 font-bold uppercase tracking-wider text-xs">
+                        No matching personnel found in headcount records
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // VIEW 3 — LSS TRAINING TRACKER
+    function LssTrainingTracker({ data, updateItem, deleteItem, insertItem }) {
+      const [searchQuery, setSearchQuery] = useState('');
+      const [leaderFilter, setLeaderFilter] = useState('All');
+      const [statusFilter, setStatusFilter] = useState('All');
+
+      const [isModalOpen, setIsModalOpen] = useState(false);
+      const [editingItem, setEditingItem] = useState(null);
+
+      // Form Field States
+      const [formName, setFormName] = useState('');
+      const [formId, setFormId] = useState('');
+      const [formEmail, setFormEmail] = useState('');
+      const [formLeader, setFormLeader] = useState('');
+      const [formPath, setFormPath] = useState('Lean Six Sigma White Belt');
+      const [formStatus, setFormStatus] = useState('Not yet started');
+      const [formProgress, setFormProgress] = useState(0);
+      const [formEnrollDate, setFormEnrollDate] = useState('');
+      const [formStartDate, setFormStartDate] = useState('');
+      const [formCompletionDate, setFormCompletionDate] = useState('');
+      const [formHireDate, setFormHireDate] = useState('');
+
+      const headers = useMemo(() => data[0]?.row || [], [data]);
+
+      const col = useMemo(() => {
+        return {
+          leader: findColIndex(headers, "Leader", 65, 76),
+          name: findColIndex(headers, "Employee Name", 65, 76),
+          empId: findColIndex(headers, "Employee ID", 65, 76),
+          email: findColIndex(headers, "Email", 65, 76),
+          path: findColIndex(headers, "Path Title", 65, 76),
+          hireDate: findColIndex(headers, "Hire Date", 65, 76),
+          enrollDate: findColIndex(headers, "Learner Enrollment Date", 65, 76),
+          startDate: findColIndex(headers, "Learner Start Date", 65, 76),
+          status: findColIndex(headers, "Learner Status", 65, 76),
+          progress: findColIndex(headers, "Progress", 65, 76),
+          completionDate: findColIndex(headers, "Learner Completion Date", 65, 76),
+        };
+      }, [headers]);
+
+      const processedRows = useMemo(() => {
+        if (data.length <= 1) return [];
+        return data.slice(1)
+          .filter(item => {
+            const row = item.row;
+            const name = safeVal(row, col.name);
+            return name && name !== 'DUMMY ENTRY' && name !== '#N/A' && name.trim() !== '';
+          })
+          .map(item => {
+            const row = item.row;
+            return {
+              id: 'lss-' + item.index_,
+              index_: item.index_,
+              name: safeVal(row, col.name),
+              empId: safeVal(row, col.empId) ? String(safeVal(row, col.empId)).replace(/\.0$/, '') : '—',
+              email: safeVal(row, col.email) || '—',
+              leader: safeVal(row, col.leader) || 'Unassigned',
+              path: safeVal(row, col.path) || 'Lean Six Sigma White Belt',
+              status: safeVal(row, col.status) || 'Not enrolled',
+              progress: parseFloat(safeVal(row, col.progress)) || 0,
+              hireDate: parseDateSafe(safeVal(row, col.hireDate)),
+              enrollDate: parseDateSafe(safeVal(row, col.enrollDate)),
+              startDate: parseDateSafe(safeVal(row, col.startDate)),
+              completionDate: parseDateSafe(safeVal(row, col.completionDate)),
+            };
+          });
+      }, [data, col]);
+
+      const stats = useMemo(() => {
+        const total = processedRows.length;
+        const successful = processedRows.filter(r => r.status.toLowerCase().trim() === 'successful').length;
+        const notEnrolled = processedRows.filter(r => r.status.toLowerCase().trim() === 'not enrolled').length;
+        const activeEnrolled = total - notEnrolled - successful;
+        const completionRate = total > 0 ? Math.round((successful / total) * 100) : 0;
+        return { total, successful, notEnrolled, activeEnrolled, completionRate };
+      }, [processedRows]);
+
+      const leaderProgressStats = useMemo(() => {
+        const map = {};
+        processedRows.forEach(r => {
+          if (!map[r.leader]) {
+            map[r.leader] = { name: r.leader, total: 0, successful: 0 };
+          }
+          map[r.leader].total++;
+          if (r.status.toLowerCase().trim() === 'successful') {
+            map[r.leader].successful++;
+          }
+        });
+        return Object.entries(map)
+          .map(([name, d]) => ({ name, total: d.total, successful: d.successful, rate: d.total > 0 ? Math.round((d.successful / d.total) * 100) : 0 }))
+          .sort((a, b) => b.rate - a.rate)
+          .slice(0, 8);
+      }, [processedRows]);
+
+      const handleStandingClick = (name) => {
+        setLeaderFilter(leaderFilter === name ? 'All' : name);
+      };
+
+      const handleStatusClick = (status) => {
+        setStatusFilter(statusFilter === status ? 'All' : status);
+      };
+
+      const filteredRows = useMemo(() => {
+        return processedRows.filter(r => {
+          const q = searchQuery.toLowerCase();
+          const matchSearch = q === '' || r.name.toLowerCase().includes(q) || r.empId.toLowerCase().includes(q) || r.leader.toLowerCase().includes(q);
+          const matchLeader = leaderFilter === 'All' || r.leader === leaderFilter;
+          const matchStatus = statusFilter === 'All' || r.status.toLowerCase().trim() === statusFilter.toLowerCase().trim();
+          return matchSearch && matchLeader && matchStatus;
+        });
+      }, [processedRows, searchQuery, leaderFilter, statusFilter]);
+
+      const leadersList = useMemo(() => ['All', ...new Set(processedRows.map(r => r.leader))].sort(), [processedRows]);
+      const statusesList = useMemo(() => ['All', ...new Set(processedRows.map(r => r.status))].sort(), [processedRows]);
+
+      const openEditModal = (item) => {
+        setEditingItem(item);
+        setFormName(item.name);
+        setFormId(item.empId === '—' ? '' : item.empId);
+        setFormEmail(item.email === '—' ? '' : item.email);
+        setFormLeader(item.leader === 'Unassigned' ? '' : item.leader);
+        setFormPath(item.path);
+        setFormStatus(item.status);
+        setFormProgress(item.progress);
+        setFormHireDate(item.hireDate ? item.hireDate.toISOString().split('T')[0] : '');
+        setFormEnrollDate(item.enrollDate ? item.enrollDate.toISOString().split('T')[0] : '');
+        setFormStartDate(item.startDate ? item.startDate.toISOString().split('T')[0] : '');
+        setFormCompletionDate(item.completionDate ? item.completionDate.toISOString().split('T')[0] : '');
+        setIsModalOpen(true);
+      };
+
+      const openAddModal = () => {
+        setEditingItem(null);
+        setFormName('');
+        setFormId('');
+        setFormEmail('');
+        setFormLeader('');
+        setFormPath('Lean Six Sigma White Belt');
+        setFormStatus('Not yet started');
+        setFormProgress(0);
+        setFormHireDate('');
+        setFormEnrollDate('');
+        setFormStartDate('');
+        setFormCompletionDate('');
+        setIsModalOpen(true);
+      };
+
+      const handleFormSubmit = (e) => {
+        e.preventDefault();
+        const updatedRow = Array(77).fill(undefined);
+        updatedRow[col.leader] = formLeader;
+        updatedRow[col.name] = formName;
+        updatedRow[col.empId] = formId;
+        updatedRow[col.email] = formEmail;
+        updatedRow[col.path] = formPath;
+        updatedRow[col.hireDate] = formHireDate || null;
+        updatedRow[col.status] = formStatus;
+        updatedRow[col.progress] = Number(formProgress);
+        updatedRow[col.enrollDate] = formEnrollDate || null;
+        updatedRow[col.startDate] = formStartDate || null;
+        updatedRow[col.completionDate] = formCompletionDate || null;
+
+        const hcNameIndex = findColIndex(headers, "Full Legal Name", 31, 63);
+        const hcLeaderIndex = findColIndex(headers, "Leader", 31, 63);
+        const hcIdIndex = findColIndex(headers, "Employee ID", 31, 63);
+        const hcStatusIndex = findColIndex(headers, "Status", 31, 63);
+        const hcTribeIndex = findColIndex(headers, "Department/Tribe", 31, 63);
+
+        updatedRow[hcNameIndex] = formName;
+        updatedRow[hcLeaderIndex] = formLeader;
+        updatedRow[hcIdIndex] = formId;
+        updatedRow[hcStatusIndex] = "Active";
+        updatedRow[hcTribeIndex] = "Logistics Operations";
+
+        if (editingItem) {
+          updateItem(editingItem.index_, updatedRow);
+        } else {
+          insertItem(undefined, updatedRow);
+        }
+        setIsModalOpen(false);
+      };
+
+      return (
+        <div className="space-y-6 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-black text-[#062115] tracking-tight">LSS Training Tracker</h1>
+                <span className="bg-[#91c13e]/20 text-[#062115] font-black text-[10px] tracking-widest uppercase px-2.5 py-1 rounded-lg"> OPEX Learning </span>
+              </div>
+              <p className="text-sm text-slate-500 font-semibold uppercase tracking-wider mt-1">Lean Six Sigma White Belt Training</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+              <button onClick={openAddModal} className="bg-[#062115] hover:bg-[#0c3120] text-white flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider shadow-sm transition-all">
+                <Icon name="Plus" className="w-4 h-4 text-[#91c13e]" /> Add Learner
+              </button>
+              <select value={leaderFilter} onChange={e => setLeaderFilter(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-slate-700 outline-none focus:ring-2 focus:ring-[#91c13e] cursor-pointer">
+                <option value="All">All Leaders</option>
+                {leadersList.filter(l => l !== 'All').map(l => <option key={l} value={l}>{l}</option>)}
+              </select>
+              <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#0f172a] outline-none focus:ring-2 focus:ring-[#91c13e] cursor-pointer">
+                <option value="All">All Statuses</option>
+                {statusesList.filter(s => s !== 'All').map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <div className="relative flex-1 lg:flex-none">
+                <Icon name="Search" className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input type="text" placeholder="SEARCH LEARNERS..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-xs font-bold tracking-wider text-slate-700 placeholder-slate-400 uppercase outline-none focus:ring-2 focus:ring-[#91c13e] w-full lg:w-56" />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <MetricCard label="Total Employee Size" value={stats.total} sub="All registered personnel" icon={<Icon name="Users" className="text-slate-600" />} />
+            <MetricCard label="Completed (Successful)" value={stats.successful} sub="White Belt Certified" color="text-[#91c13e]" icon={<Icon name="CheckCircle2" className="text-[#91c13e]" />} />
+            <MetricCard label="Active Enrolled" value={stats.activeEnrolled} sub="In Progress & Starting" icon={<Icon name="Award" className="text-indigo-600" />} />
+            <MetricCard label="Completion Rate" value={stats.completionRate + '%'} sub="Passed certificates" showProgress progress={stats.completionRate} icon={<Icon name="Target" className="text-rose-500" />} />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div className="lg:col-span-7 bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col">
+              <div>
+                <h2 className="text-lg font-black text-[#062115] tracking-tight">OPEX Team Completion Training</h2>
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-1">Average team completion rate per leader</p>
+              </div>
+              <div className="space-y-4 mt-6 overflow-y-auto max-h-[300px] pr-2 flex-1 scrollbar-none">
+                {leaderProgressStats.map(leader => {
+                  const isCurrentFilter = leaderFilter === leader.name;
+                  return (
+                    <div key={leader.name} onClick={() => handleStandingClick(leader.name)} className={'p-3 rounded-xl border transition-all cursor-pointer flex flex-col gap-2 ' + (isCurrentFilter ? 'border-[#91c13e] bg-[#f8fbf6]' : 'border-slate-100 hover:border-slate-200 hover:bg-slate-50/50')}>
+                      <div className="flex justify-between items-center text-xs font-bold uppercase tracking-wider">
+                        <span className="text-slate-800 font-black">{leader.name} ({leader.total} employees)</span>
+                        <span className="text-slate-500 font-semibold">{Math.round(leader.rate)}% Completed</span>
+                      </div>
+                      <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                        <div className="bg-[#91c13e] h-full" style={{ width: leader.rate + '%' }}></div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="lg:col-span-5 bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col justify-between">
+              <div>
+                <h2 className="text-lg font-black text-[#062115] tracking-tight">Status Distribution</h2>
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-1">Enrollment vs completion segments (click to filter)</p>
+              </div>
+              <div className="space-y-4 mt-6 flex-1 flex flex-col justify-center">
+                {['Successful', 'Not enrolled', 'Not yet started', 'On time'].map((statusName, index) => {
+                  const matches = processedRows.filter(r => r.status.toLowerCase().trim() === statusName.toLowerCase().trim());
+                  const count = matches.length;
+                  const percent = stats.total > 0 ? Math.round((count / stats.total) * 100) : 0;
+                  const isCurrentFilter = statusFilter.toLowerCase().trim() === statusName.toLowerCase().trim();
+                  const colors = ['bg-[#91c13e]', 'bg-slate-300', 'bg-amber-400', 'bg-indigo-500'];
+                  return (
+                    <div key={statusName} onClick={() => handleStatusClick(statusName)} className={'p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between text-xs ' + (isCurrentFilter ? 'border-[#91c13e] bg-[#f8fbf6]' : 'border-slate-100 hover:border-slate-200 hover:bg-slate-50/50')}>
+                      <div className="flex items-center gap-2.5 truncate">
+                        <span className={'w-3 h-3 rounded-full ' + colors[index]}></span>
+                        <span className="font-bold text-slate-700 uppercase tracking-wide">{statusName}</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-slate-400 font-bold">{count} learners</span>
+                        <span className="font-black text-slate-800 bg-slate-100 px-2 py-1 rounded-md">{percent}%</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Directory Table */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+            <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-black text-[#062115] tracking-tight">Training Standings Directory</h2>
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-1">Active certifications registry</p>
+              </div>
+              <span className="bg-emerald-50 text-[#062115] text-xs font-black uppercase tracking-wider px-3 py-1.5 rounded-xl">
+                {filteredRows.length} MATCHES
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50/50 text-slate-400 font-bold uppercase text-[10px] tracking-widest">
+                    <th className="py-4 px-6">Learner & ID</th>
+                    <th className="py-4 px-4">Direct Leader</th>
+                    <th className="py-4 px-4">Email</th>
+                    <th className="py-4 px-4">Training Path</th>
+                    <th className="py-4 px-4 text-center">Status</th>
+                    <th className="py-4 px-4 w-44">Progress</th>
+                    <th className="py-4 px-4">Key Dates</th>
+                    <th className="py-4 px-6 text-center w-32">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs">
+                  {filteredRows.map(row => (
+                    <tr key={row.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="py-4 px-6 font-bold text-slate-800">
+                        <div className="flex flex-col">
+                          <span className="font-extrabold text-slate-800">{row.name}</span>
+                          <span className="text-[10px] text-slate-400 uppercase font-black tracking-wider mt-0.5 font-mono">ID: {row.empId}</span>
+                        </div>
+                      </td>
+                      <td className="py-4 px-4 font-bold text-slate-700">{row.leader}</td>
+                      <td className="py-4 px-4 text-slate-500 font-semibold">{row.email}</td>
+                      <td className="py-4 px-4 font-bold text-slate-600 truncate max-w-xs">{row.path}</td>
+                      <td className="py-4 px-4 text-center">
+                        <span className={'inline-block px-2.5 py-1 text-[9px] font-black uppercase tracking-wider rounded-lg border ' + (row.status.toLowerCase().trim() === 'successful' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : row.status.toLowerCase().trim() === 'not enrolled' ? 'bg-slate-100 text-slate-500 border-slate-200' : 'bg-amber-50 text-amber-700 border-amber-200')}>
+                          {row.status}
+                        </span>
+                      </td>
+                      <td className="py-4 px-4">
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden">
+                            <div className="bg-[#91c13e] h-full" style={{ width: row.progress + '%' }}></div>
+                          </div>
+                          <span className="font-bold text-slate-700 font-mono">{row.progress}%</span>
+                        </div>
+                      </td>
+                      <td className="py-4 px-4 font-semibold text-slate-600 space-y-0.5">
+                        {row.hireDate && (
+                          <div className="flex items-center gap-1 text-slate-500 font-semibold">
+                            <span className="text-[9px] uppercase font-black tracking-wider text-slate-400 w-12">Hired:</span>
+                            <span>{row.hireDate.toLocaleDateString()}</span>
+                          </div>
+                        )}
+                        {row.enrollDate && (
+                          <div className="flex items-center gap-1">
+                            <span className="text-[9px] uppercase font-black tracking-wider text-slate-400 w-12">Enroll:</span>
+                            <span>{row.enrollDate.toLocaleDateString()}</span>
+                          </div>
+                        )}
+                        {row.completionDate && (
+                          <div className="flex items-center gap-1 text-emerald-600">
+                            <span className="text-[9px] uppercase font-black tracking-wider text-slate-400 w-12">Done:</span>
+                            <span>{row.completionDate.toLocaleDateString()}</span>
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-4 px-6 text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <button onClick={() => openEditModal(row)} className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-all">
+                            <Icon name="Edit3" className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => deleteItem(row.index_)} className="p-1.5 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition-all">
+                            <Icon name="Trash2" className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredRows.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="text-center py-8 text-slate-400 font-bold uppercase tracking-wider text-xs">
+                        No matching learners found in standings registry
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Add/Edit Modal */}
+          {isModalOpen && (
+            <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+              <div className="bg-white rounded-3xl shadow-xl border border-slate-100 w-full max-w-2xl overflow-hidden max-h-[90vh] flex flex-col">
+                <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-slate-50 shrink-0">
+                  <div>
+                    <h3 className="text-lg font-black text-[#062115] tracking-tight">
+                      {editingItem ? 'Edit Learner Profile' : 'Add New Learner'}
+                    </h3>
+                    <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-0.5">Enterprise Standings Verification</p>
+                  </div>
+                  <button onClick={() => setIsModalOpen(false)} className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all">
+                    <Icon name="X" className="w-5 h-5" />
+                  </button>
+                </div>
+                <form onSubmit={handleFormSubmit} className="p-6 space-y-4 overflow-y-auto flex-1 scrollbar-none text-left">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5 col-span-2">
+                      <label className="text-[10px] uppercase font-black tracking-wider text-slate-400">Full Legal Name</label>
+                      <input type="text" required value={formName} onChange={e => setFormName(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#91c13e] focus:bg-white transition-all font-semibold" placeholder="Enter Employee Name" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase font-black tracking-wider text-slate-400">Employee ID</label>
+                      <input type="text" required value={formId} onChange={e => setFormId(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#91c13e] focus:bg-white transition-all font-semibold" placeholder="Enter ID" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase font-black tracking-wider text-slate-400">Email Address</label>
+                      <input type="email" required value={formEmail} onChange={e => setFormEmail(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#91c13e] focus:bg-white transition-all font-semibold" placeholder="example@hellofresh.com" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase font-black tracking-wider text-slate-400">Direct Leader</label>
+                      <input type="text" required value={formLeader} onChange={e => setFormLeader(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#91c13e] focus:bg-white transition-all font-semibold" placeholder="Reporting Leader Name" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase font-black tracking-wider text-slate-400">Training Path</label>
+                      <select value={formPath} onChange={e => setFormPath(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#91c13e] focus:bg-white transition-all cursor-pointer font-semibold">
+                        <option value="Lean Six Sigma White Belt">Lean Six Sigma White Belt</option>
+                        <option value="Lean Six Sigma Green Belt">Lean Six Sigma Green Belt</option>
+                        <option value="Lean Six Sigma Black Belt">Lean Six Sigma Black Belt</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase font-black tracking-wider text-slate-400">Learner Status</label>
+                      <select value={formStatus} onChange={e => setFormStatus(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#91c13e] focus:bg-white transition-all cursor-pointer font-semibold">
+                        <option value="Successful">Successful</option>
+                        <option value="Not enrolled">Not enrolled</option>
+                        <option value="Not yet started">Not yet started</option>
+                        <option value="On time">On time</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase font-black tracking-wider text-slate-400">Progress (%)</label>
+                      <input type="number" min="0" max="100" value={formProgress} onChange={e => setFormProgress(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#91c13e] focus:bg-white transition-all font-semibold" placeholder="0" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase font-black tracking-wider text-slate-400">Hire Date</label>
+                      <input type="date" value={formHireDate} onChange={e => setFormHireDate(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#91c13e] focus:bg-white transition-all font-semibold" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase font-black tracking-wider text-slate-400">Enrollment Date</label>
+                      <input type="date" value={formEnrollDate} onChange={e => setFormEnrollDate(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#91c13e] focus:bg-white transition-all font-semibold" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase font-black tracking-wider text-slate-400">Completion Date</label>
+                      <input type="date" value={formCompletionDate} onChange={e => setFormCompletionDate(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#91c13e] focus:bg-white transition-all font-semibold" />
+                    </div>
+                  </div>
+                  <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3 shrink-0">
+                    <button type="button" onClick={() => setIsModalOpen(false)} className="bg-slate-100 text-slate-600 hover:bg-slate-200 font-bold uppercase text-xs tracking-wider px-5 py-3 rounded-xl transition-all">
+                      Cancel
+                    </button>
+                    <button type="submit" className="bg-[#91c13e] text-[#062115] hover:bg-[#94D500] font-black uppercase text-xs tracking-wider px-6 py-3 rounded-xl transition-all shadow-sm">
+                      Save Profile
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // VIEW 4 — IDEA PARTICIPATION
+    function IdeaParticipation({ data }) {
+      const [selectedYear, setSelectedYear] = useState('2026');
+      const [selectedQuarter, setSelectedQuarter] = useState('All');
+      const [searchQuery, setSearchQuery] = useState('');
+
+      const headers = useMemo(() => data[0]?.row || [], [data]);
+
+      const hcCol = useMemo(() => {
+        return {
+          leader: findColIndex(headers, "Leader", 31, 63),
+          name: findColIndex(headers, "Full Legal Name", 31, 63),
+        };
+      }, [headers]);
+
+      const opexCol = useMemo(() => {
+        const idx = (str) => headers.findIndex(h => h?.toString().toLowerCase().includes(str.toLowerCase()));
+        const exactIdx = (str) => headers.findIndex(h => h?.toString() === str);
+        return {
+          reporter: exactIdx("Reporter"),
+          created: exactIdx("Created"),
+          issueId: exactIdx("Issue id"),
+          dept: exactIdx("Components"),
+          summary: exactIdx("Summary"),
+        };
+      }, [headers]);
+
+      const roster = useMemo(() => {
+        if (data.length <= 1) return [];
+        const map = new Map();
+        data.slice(1).forEach(item => {
+          const row = item.row;
+          const name = safeVal(row, hcCol.name).trim();
+          const leader = safeVal(row, hcCol.leader).trim() || 'Unassigned';
+          if (name && name !== 'DUMMY ENTRY' && name !== '#N/A' && name !== '') {
+            const cleaned = cleanName(name);
+            if (cleaned && !map.has(cleaned)) {
+              map.set(cleaned, { name, leader, cleaned });
+            }
+          }
+        });
+        return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+      }, [data, hcCol]);
+
+      const opexInitiatives = useMemo(() => {
+        if (!headers.length) return [];
+        return data.filter(item => {
+          const row = item.row;
+          if (row === headers) return false;
+          const issueIdVal = row[opexCol.issueId];
+          if (issueIdVal === undefined || issueIdVal === null || String(issueIdVal).trim() === '') {
+            return false;
+          }
+          const deptVal = (row[opexCol.dept] || "").toString().trim();
+          if (!deptVal || deptVal.toLowerCase() === "unassigned" || deptVal.toLowerCase().includes("hr software support")) return false;
+          return true;
+        }).map(item => {
+          const row = item.row;
+          const createdDate = parseDateSafe(row[opexCol.created]);
+          const reporter = safeVal(row, opexCol.reporter);
+          const summary = safeVal(row, opexCol.summary);
+          const mIdx = createdDate ? createdDate.getMonth() : null;
+          const quarter = mIdx !== null ? Math.floor(mIdx / 3) + 1 : null;
+          return {
+            reporter,
+            summary,
+            createdDate,
+            year: createdDate ? createdDate.getFullYear().toString() : 'Unknown',
+            quarter: quarter ? 'Q' + quarter : 'Unknown',
+          };
+        });
+      }, [data, opexCol, headers]);
+
+      const participationRoster = useMemo(() => {
+        return roster.map(person => {
+          const matches = opexInitiatives.filter(init => {
+            const reporterMatch = matchNames(person.name, init.reporter);
+            const yearMatch = selectedYear === 'All' || init.year === selectedYear;
+            const quarterMatch = selectedQuarter === 'All' || init.quarter === selectedQuarter;
+            return reporterMatch && yearMatch && quarterMatch;
+          });
+          return {
+            ...person,
+            hasSubmitted: matches.length > 0,
+            submissions: matches,
+          };
+        });
+      }, [roster, opexInitiatives, selectedYear, selectedQuarter]);
+
+      const stats = useMemo(() => {
+        const total = participationRoster.length;
+        const submitted = participationRoster.filter(p => p.hasSubmitted).length;
+        const pct = total > 0 ? ((submitted / total) * 100).toFixed(1) : '0.0';
+        return { total, submitted, pct };
+      }, [participationRoster]);
+
+      const filteredRoster = useMemo(() => {
+        return participationRoster.filter(p => {
+          const q = searchQuery.toLowerCase();
+          const nameMatch = p.name.toLowerCase().includes(q);
+          const leaderMatch = p.leader.toLowerCase().includes(q);
+          return nameMatch || leaderMatch;
+        });
+      }, [participationRoster, searchQuery]);
+
+      return (
+        <div className="space-y-6 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-black text-[#062115] tracking-tight">Idea Participation</h1>
+              <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-1">One Idea Per Quarter</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Year:</span>
+                <select value={selectedYear} onChange={e => setSelectedYear(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold uppercase tracking-wider text-slate-700 outline-none focus:ring-2 focus:ring-[#91c13e] cursor-pointer">
+                  <option value="All">All Years</option>
+                  <option value="2025">2025</option>
+                  <option value="2026">2026</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Quarter:</span>
+                <select value={selectedQuarter} onChange={e => setSelectedQuarter(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold uppercase tracking-wider text-slate-700 outline-none focus:ring-2 focus:ring-[#91c13e] cursor-pointer">
+                  <option value="All">All Quarters</option>
+                  <option value="Q1">Q1</option>
+                  <option value="Q2">Q2</option>
+                  <option value="Q3">Q3</option>
+                  <option value="Q4">Q4</option>
+                </select>
+              </div>
+              <div className="relative flex-1 lg:flex-none">
+                <Icon name="Search" className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input type="text" placeholder="SEARCH ROSTER..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-xs font-bold tracking-wider text-slate-700 placeholder-slate-400 uppercase outline-none focus:ring-2 focus:ring-[#91c13e] w-full lg:w-56" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-[#062115] text-white rounded-2xl p-6 shadow-sm border border-emerald-950 flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="space-y-1">
+              <h2 className="text-lg font-black tracking-tight text-[#91c13e]">Idea Participation Standing</h2>
+              <p className="text-xs text-gray-300 font-semibold max-w-xl"> Summary matching Headcount tracking list with OPEX CI contributions, stripping honorifics case-insensitively from both names. </p>
+            </div>
+            <div className="bg-emerald-950/50 border border-emerald-850/40 rounded-xl px-5 py-3 text-center md:text-right">
+              <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest block mb-0.5">Roster Summary</span>
+              <div className="text-2xl font-black text-white font-mono">
+                {stats.submitted + ' of ' + stats.total + ' submitted (' + stats.pct + '%)'}
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+            <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-black text-[#062115] tracking-tight">Participation Directory</h2>
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-1">Live Employee Campaign Standings</p>
+              </div>
+              <span className="bg-slate-50 text-slate-700 text-xs font-black uppercase tracking-wider px-3 py-1.5 rounded-xl font-mono">
+                {filteredRoster.length} listed
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50/50 text-slate-400 font-bold uppercase text-[10px] tracking-widest font-mono">
+                    <th className="py-4 px-6">Staff Member</th>
+                    <th className="py-4 px-4">Direct Supervisor</th>
+                    <th className="py-4 px-4 text-center">Status</th>
+                    <th className="py-4 px-6 text-right">Count of Ideas</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs">
+                  {filteredRoster.map(person => (
+                    <tr key={person.name} className="hover:bg-slate-50/50 transition-colors duration-150">
+                      <td className="py-4 px-6 font-bold text-slate-800">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-600 uppercase text-xs shrink-0">
+                            {person.name.substring(0, 2)}
+                          </div>
+                          <span className="font-extrabold text-slate-800 text-sm">{person.name}</span>
+                        </div>
+                      </td>
+                      <td className="py-4 px-4 font-bold text-slate-700">{person.leader}</td>
+                      <td className="py-4 px-4 text-center">
+                        {person.hasSubmitted ? (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200/60 rounded-full font-black uppercase text-[9px] tracking-widest">
+                            <Icon name="CheckCircle" className="w-3.5 h-3.5 text-emerald-600" /> Submitted
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-50 text-slate-400 border border-slate-200/60 rounded-full font-black uppercase text-[9px] tracking-widest">
+                            <Icon name="HelpCircle" className="w-3.5 h-3.5 text-slate-400" /> No Submission
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-4 px-6 text-right font-black font-mono text-slate-800 text-sm">
+                        {person.submissions.length}
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredRoster.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="text-center py-12 text-slate-400 font-bold uppercase tracking-wider text-xs">
+                        No matching personnel discovered in the active roster
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    /* ===========================================================================
+       SHARED UI HELPERS
+       =========================================================================== */
+    function MetricCard({ label, value, icon, color = 'text-[#062115]', sub, showProgress, progress, secondarySub, progressColor = 'bg-[#91c13e]', formula }) {
+      return (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex flex-col justify-between h-32 transition-all hover:scale-[1.01] hover:shadow-md">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{label}</span>
+            <div className="p-1.5 rounded-lg bg-slate-50 text-slate-500">{icon}</div>
+          </div>
+          <div>
+            <h3 className={'text-xl font-black tracking-tight ' + color}>{value}</h3>
+            {formula && (
+              <span className="text-[10px] text-slate-400 font-semibold block leading-tight mt-0.5">{formula}</span>
+            )}
+            {showProgress ? (
+              <div className="mt-1.5 w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                <div className={'h-full ' + progressColor} style={{ width: Math.min(progress, 100) + '%' }}></div>
+              </div>
+            ) : (
+              sub && <p className="text-[10px] text-slate-400 font-semibold mt-0.5 truncate">{sub}</p>
+            )}
+            {secondarySub && (
+              <p className="text-[9px] text-slate-400 font-bold uppercase mt-1 tracking-wide truncate">{secondarySub}</p>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    function MomentumD3Chart({ data }) {
+      const svgRef = useRef(null);
+      const containerRef = useRef(null);
+
+      useEffect(() => {
+        if (!svgRef.current || !containerRef.current) return;
+        const margin = { top: 30, right: 30, bottom: 40, left: 45 };
+        const width = Math.max(containerRef.current.clientWidth - margin.left - margin.right, 200);
+        const height = 280 - margin.top - margin.bottom;
+
+        const svg = d3.select(svgRef.current);
+        svg.selectAll("*").remove();
+
+        const g = svg.append("g")
+          .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+        const x = d3.scalePoint()
+          .domain(data.map(d => d.month))
+          .range([0, width]);
+
+        const yMax = d3.max(data, d => Math.max(d.Submitted, d.Completed)) || 5;
+        const y = d3.scaleLinear()
+          .domain([0, yMax + 1])
+          .range([height, 0]);
+
+        g.append("g")
+          .attr("class", "grid")
+          .attr("stroke", "#f1f5f9")
+          .attr("stroke-opacity", 0.6)
+          .call(d3.axisLeft(y).ticks(5).tickSize(-width).tickFormat(""));
+
+        g.append("g")
+          .attr("transform", "translate(0," + height + ")")
+          .call(d3.axisBottom(x).tickSize(0).tickPadding(10))
+          .call(g => g.select(".domain").remove())
+          .selectAll("text")
+          .attr("fill", "#64748b")
+          .style("font-size", "11px");
+
+        g.append("g")
+          .call(d3.axisLeft(y).ticks(5).tickSize(0).tickPadding(10))
+          .call(g => g.select(".domain").remove())
+          .selectAll("text")
+          .attr("fill", "#64748b")
+          .style("font-size", "11px");
+
+        const lineSubmitted = d3.line()
+          .x(d => x(d.month))
+          .y(d => y(d.Submitted))
+          .curve(d3.curveMonotoneX);
+
+        const lineCompleted = d3.line()
+          .x(d => x(d.month))
+          .y(d => y(d.Completed))
+          .curve(d3.curveMonotoneX);
+
+        g.append("path")
+          .datum(data)
+          .attr("fill", "none")
+          .attr("stroke", BAR_SUBMITTED_GRAY)
+          .attr("stroke-width", 3)
+          .attr("d", lineSubmitted);
+
+        g.append("path")
+          .datum(data)
+          .attr("fill", "none")
+          .attr("stroke", HF_GREEN)
+          .attr("stroke-width", 3)
+          .attr("d", lineCompleted);
+
+        g.selectAll(".dot-sub")
+          .data(data)
+          .enter()
+          .append("circle")
+          .attr("cx", d => x(d.month))
+          .attr("cy", d => y(d.Submitted))
+          .attr("r", 4)
+          .attr("fill", "#fff")
+          .attr("stroke", BAR_SUBMITTED_GRAY)
+          .attr("stroke-width", 2);
+
+        g.selectAll(".dot-comp")
+          .data(data)
+          .enter()
+          .append("circle")
+          .attr("cx", d => x(d.month))
+          .attr("cy", d => y(d.Completed))
+          .attr("r", 4)
+          .attr("fill", "#fff")
+          .attr("stroke", HF_GREEN)
+          .attr("stroke-width", 2);
+
+        const handleResize = () => {
+          if (!containerRef.current) return;
+          const newWidth = Math.max(containerRef.current.clientWidth - margin.left - margin.right, 200);
+          x.range([0, newWidth]);
+          svg.selectAll("*").remove();
+
+          const newG = svg.append("g")
+            .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+          newG.append("g")
+            .attr("stroke", "#f1f5f9")
+            .attr("stroke-opacity", 0.6)
+            .call(d3.axisLeft(y).ticks(5).tickSize(-newWidth).tickFormat(""));
+
+          newG.append("g")
+            .attr("transform", "translate(0," + height + ")")
+            .call(d3.axisBottom(x).tickSize(0).tickPadding(10))
+            .call(g => g.select(".domain").remove())
+            .selectAll("text")
+            .attr("fill", "#64748b")
+            .style("font-size", "11px");
+
+          newG.append("g")
+            .call(d3.axisLeft(y).ticks(5).tickSize(0).tickPadding(10))
+            .call(g => g.select(".domain").remove())
+            .selectAll("text")
+            .attr("fill", "#64748b")
+            .style("font-size", "11px");
+
+          newG.append("path")
+            .datum(data)
+            .attr("fill", "none")
+            .attr("stroke", BAR_SUBMITTED_GRAY)
+            .attr("stroke-width", 3)
+            .attr("d", lineSubmitted);
+
+          newG.append("path")
+            .datum(data)
+            .attr("fill", "none")
+            .attr("stroke", HF_GREEN)
+            .attr("stroke-width", 3)
+            .attr("d", lineCompleted);
+
+          newG.selectAll(".dot-sub")
+            .data(data)
+            .enter()
+            .append("circle")
+            .attr("cx", d => x(d.month))
+            .attr("cy", d => y(d.Submitted))
+            .attr("r", 4)
+            .attr("fill", "#fff")
+            .attr("stroke", BAR_SUBMITTED_GRAY)
+            .attr("stroke-width", 2);
+
+          newG.selectAll(".dot-comp")
+            .data(data)
+            .enter()
+            .append("circle")
+            .attr("cx", d => x(d.month))
+            .attr("cy", d => y(d.Completed))
+            .attr("r", 4)
+            .attr("fill", "#fff")
+            .attr("stroke", HF_GREEN)
+            .attr("stroke-width", 2);
+        };
+
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+      }, [data]);
+
+      return (
+        <div ref={containerRef} className="w-full h-72">
+          <svg ref={svgRef} className="w-full h-full overflow-visible" />
+        </div>
+      );
+    }
+
+    // Mount App
+    const container = document.getElementById('root');
+    const root = ReactDOM.createRoot(container);
+    root.render(<App />);
+  </script>
+</body>
+</html>
