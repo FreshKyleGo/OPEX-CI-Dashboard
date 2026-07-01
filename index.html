@@ -670,7 +670,9 @@
       const [integrationTab, setIntegrationTab] = useState('googlesheets');
       const [pasteMode, setPasteMode] = useState('consolidated');
       const [syncSource, setSyncSource] = useState('Default Mock Database');
-      const [googleUrl, setGoogleUrl] = useState('');
+      const [googleUrlJira, setGoogleUrlJira] = useState('');
+      const [googleUrlHc, setGoogleUrlHc] = useState('');
+      const [googleUrlTr, setGoogleUrlTr] = useState('');
       const [loading, setLoading] = useState(false);
       const [statusMessage, setStatusMessage] = useState('');
       
@@ -764,12 +766,35 @@
 
       const [data, setData] = useState(initialMockData);
 
-      // 🔄 Auto-load Google Sheet URL if saved in localStorage on startup
+      // 🔄 Auto-load Google Sheet URLs if saved in localStorage on startup
       useEffect(() => {
-        const savedUrl = localStorage.getItem('hf_opex_portal_v2');
-        if (savedUrl) {
-          setGoogleUrl(savedUrl);
-          fetchGoogleSheetData(savedUrl, true);
+        const savedJira = localStorage.getItem('hf_opex_jira_url');
+        const savedHc = localStorage.getItem('hf_opex_hc_url');
+        const savedTr = localStorage.getItem('hf_opex_tr_url');
+        if (savedJira || savedHc || savedTr) {
+          if (savedJira) setGoogleUrlJira(savedJira);
+          if (savedHc) setGoogleUrlHc(savedHc);
+          if (savedTr) setGoogleUrlTr(savedTr);
+          // Auto-fetch using saved values directly
+          const autoFetch = async () => {
+            setLoading(true);
+            setStatusMessage('Auto-connecting to Google Sheets...');
+            try {
+              const [jiraRows, hcRows, trRows] = await Promise.all([
+                savedJira ? fetchCsv(savedJira) : Promise.resolve(null),
+                savedHc ? fetchCsv(savedHc) : Promise.resolve(null),
+                savedTr ? fetchCsv(savedTr) : Promise.resolve(null)
+              ]);
+              const sheetsMap = {};
+              if (jiraRows) sheetsMap["Database Jira"] = jiraRows;
+              if (hcRows) sheetsMap["Headcount Tracker"] = hcRows;
+              if (trRows) sheetsMap["White Belt Training"] = trRows;
+              const reconciled = reconcileSpreadsheets(sheetsMap);
+              if (reconciled) { setData(reconciled); setSyncSource('Google Sheets (3-Tab Live Sync)'); setStatusMessage('🟢 Auto-synced!'); }
+            } catch(e) { setStatusMessage('🔴 Auto-sync failed: ' + e.message); }
+            finally { setLoading(false); }
+          };
+          autoFetch();
         }
       }, []);
 
@@ -836,94 +861,60 @@
         }
       };
 
-      // Fetches standard Google Sheet Share Link and processes Excel sheets dynamically
-      const fetchGoogleSheetData = async (url, isAutoLoad = false) => {
-        if (!url) return;
+      // Parse a published CSV URL into rows
+      const fetchCsv = async (url) => {
+        if (!url || !url.trim()) return null;
+        const matches = url.match(/\/d\/e\/([a-zA-Z0-9-_]+)/);
+        if (!matches) throw new Error("Invalid URL: " + url);
+        const publishId = matches[1];
+        const gidMatches = url.match(/gid=([0-9]+)/);
+        const gid = gidMatches ? gidMatches[1] : '0';
+        const exportUrl = `https://docs.google.com/spreadsheets/d/e/${publishId}/pub?gid=${gid}&single=true&output=csv`;
+        const response = await fetch(exportUrl);
+        if (!response.ok) throw new Error("Failed to fetch CSV. Make sure the tab is published.");
+        const csvText = await response.text();
+        return csvText.split('\n').map(line => {
+          const result = []; let current = '', inQuotes = false;
+          for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+            if (char === '"') { inQuotes = !inQuotes; }
+            else if (char === ',' && !inQuotes) { result.push(current.trim()); current = ''; }
+            else { current += char; }
+          }
+          result.push(current.trim());
+          return result;
+        });
+      };
+
+      // Fetch all three tabs and reconcile
+      const fetchThreeSheets = async () => {
+        if (!googleUrlJira && !googleUrlHc && !googleUrlTr) return;
         setLoading(true);
-        setStatusMessage(isAutoLoad ? 'Connecting to Google Sheets...' : 'Establishing live handshake...');
-
+        setStatusMessage('Connecting to Google Sheets...');
         try {
-          let exportUrl = '';
-          
-          if (url.includes('/d/e/')) {
-            const matches = url.match(/\/d\/e\/([a-zA-Z0-9-_]+)/);
-            if (!matches) {
-              throw new Error("Invalid 'Publish to web' URL format.");
-            }
-            const publishId = matches[1];
-            
-            // If they published a specific tab (like gid=255849728), fetch that tab as CSV
-            if (url.includes('gid=')) {
-              const gidMatches = url.match(/gid=([0-9]+)/);
-              const gid = gidMatches ? gidMatches[1] : '0';
-              exportUrl = `https://docs.google.com/spreadsheets/d/e/${publishId}/pub?gid=${gid}&single=true&output=csv`;
-            } else {
-              // Otherwise fetch the whole XLSX document
-              exportUrl = `https://docs.google.com/spreadsheets/d/e/${publishId}/pub?output=xlsx`;
-            }
+          const [jiraRows, hcRows, trRows] = await Promise.all([
+            fetchCsv(googleUrlJira),
+            fetchCsv(googleUrlHc),
+            fetchCsv(googleUrlTr)
+          ]);
+          const sheetsMap = {};
+          if (jiraRows) sheetsMap["Database Jira"] = jiraRows;
+          if (hcRows) sheetsMap["Headcount Tracker"] = hcRows;
+          if (trRows) sheetsMap["White Belt Training"] = trRows;
+          const reconciled = reconcileSpreadsheets(sheetsMap);
+          if (reconciled) {
+            setData(reconciled);
+            localStorage.setItem('hf_opex_jira_url', googleUrlJira);
+            localStorage.setItem('hf_opex_hc_url', googleUrlHc);
+            localStorage.setItem('hf_opex_tr_url', googleUrlTr);
+            setSyncSource('Google Sheets (3-Tab Live Sync)');
+            setStatusMessage('🟢 All three tabs synced successfully!');
+            setIntegrationOpen(false);
           } else {
-            const matches = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
-            if (!matches) {
-              throw new Error("Invalid standard sharing URL format.");
-            }
-            const spreadsheetId = matches[1];
-            exportUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=xlsx`;
-          }
-
-          const response = await fetch(exportUrl);
-          if (!response.ok) {
-            throw new Error("Handshake blocked. Standard Google Sheet links require active sign-in sessions. Please Publish your Sheet to the Web (instructions below) to create a secure CORS-free connection.");
-          }
-
-          if (exportUrl.includes('output=csv')) {
-            const csvText = await response.text();
-            // Parse CSV dynamically
-            const rows = csvText.split('\n').map(line => {
-              // Basic CSV row splitter mapping quotes
-              const result = [];
-              let current = '';
-              let inQuotes = false;
-              for (let i = 0; i < line.length; i++) {
-                const char = line[i];
-                if (char === '"') {
-                  inQuotes = !inQuotes;
-                } else if (char === ',' && !inQuotes) {
-                  result.push(current.trim());
-                  current = '';
-                } else {
-                  current += char;
-                }
-              }
-              result.push(current.trim());
-              return result;
-            });
-
-            const sheetsMap = { "Canvas Source": rows };
-            const reconciled = reconcileSpreadsheets(sheetsMap);
-            if (reconciled) {
-              setData(reconciled);
-              localStorage.setItem('hf_opex_portal_v2', url);
-              setSyncSource('Google Sheets (Auto-Syncing)');
-              setStatusMessage('🟢 Live Google Sheets Canvas Tab Synced successfully!');
-            } else {
-              throw new Error("Reconciliation failed. Check that your Google Sheet tab column layout matches.");
-            }
-          } else {
-            const arrayBuffer = await response.arrayBuffer();
-            const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-            processWorkbook(workbook);
-            localStorage.setItem('hf_opex_portal_v2', url);
-            setSyncSource('Google Sheets (Auto-Syncing)');
-            setStatusMessage('🟢 Live Google Sheet Workbook Synced successfully!');
+            throw new Error("Reconciliation failed. Check that all three URLs point to the correct tabs.");
           }
         } catch (error) {
-          console.error(error);
-          let errorMsg = `🔴 Sync Failed: ${error.message}`;
-          if (!url.includes('/d/e/')) {
-            errorMsg += ` \n💡 RESOLUTION: Browsers block local file fetches to standard Google Drive links. To make this file sync automatically, follow the simple "Publish to web" method inside Tab 3!`;
-          }
-          setStatusMessage(errorMsg);
-          if (!isAutoLoad) setIntegrationOpen(true);
+          setStatusMessage(`🔴 Sync Failed: ${error.message}`);
         } finally {
           setLoading(false);
         }
@@ -977,8 +968,12 @@
         setData(initialMockData);
         setSyncSource('Default Mock Database');
         setStatusMessage('Reverted to system mockup portfolio.');
-        localStorage.removeItem('hf_opex_portal_v2');
-        setGoogleUrl('');
+        localStorage.removeItem('hf_opex_jira_url');
+        localStorage.removeItem('hf_opex_hc_url');
+        localStorage.removeItem('hf_opex_tr_url');
+        setGoogleUrlJira('');
+        setGoogleUrlHc('');
+        setGoogleUrlTr('');
         setPasteJira('');
         setPasteHeadcount('');
         setPasteTraining('');
@@ -1193,36 +1188,59 @@
                   <div className="space-y-4 animate-fade-in text-xs max-w-4xl">
                     <div className="flex items-center gap-2 text-sm font-black text-[#91c13e] uppercase">
                       <Icon name="Globe" className="w-5 h-5 text-[#91c13e]" />
-                      <span>Live Google Sheet Connection</span>
+                      <span>Live Google Sheet — 3-Tab Sync</span>
                     </div>
-                    
+
                     <div className="bg-emerald-950/40 p-4 rounded-xl border border-emerald-800/40 space-y-2 text-slate-300">
-                      <span className="font-bold text-white block">💡 Zero-Click Auto-Syncing Protocol:</span>
-                      <p>Because your HTML is running locally as a file, standard private sharing URLs are blocked by browser fetch protocols. To sync automatically, you must <strong>Publish your Canvas Source Sheet tab to the Web as a CSV</strong>. This allows the local app to pull latest changes without encountering security blocks:</p>
+                      <span className="font-bold text-white block">💡 How to connect each tab:</span>
                       <ol className="list-decimal list-inside space-y-1.5 ml-1 font-semibold text-slate-200">
                         <li>Open your tracker in Google Sheets.</li>
-                        <li>Select <strong>File &gt; Share &gt; Publish to web</strong>.</li>
-                        <li>In the pop-up options, change the first dropdown from "Entire Document" to <strong className="text-[#91c13e]">Canvas Source</strong>.</li>
-                        <li>Change the second dropdown from "Web Page" to <strong className="text-[#91c13e]">Comma-separated values (.csv)</strong>.</li>
-                        <li>Click <strong className="text-[#91c13e]">Publish</strong> and copy the URL generated in the box.</li>
-                        <li>Paste that link below and hit "Connect Live". It is saved securely—it will auto-update on every future load!</li>
+                        <li>Go to <strong>File &gt; Share &gt; Publish to web</strong>.</li>
+                        <li>Select a tab (e.g. <strong className="text-[#91c13e]">Database Jira</strong>) → set format to <strong className="text-[#91c13e]">CSV</strong> → click Publish → copy URL.</li>
+                        <li>Repeat for <strong className="text-[#91c13e]">Headcount Tracker - Linked</strong> and <strong className="text-[#91c13e]">White Belt Training OPEX Tracking</strong>.</li>
+                        <li>Paste each URL below and click <strong className="text-[#91c13e]">Connect All</strong>. URLs are saved and auto-load on every visit.</li>
                       </ol>
                     </div>
 
-                    <div className="flex gap-2">
-                      <input 
-                        type="text" 
-                        placeholder="Paste Google Sheets 'Publish to Web' link here..." 
-                        value={googleUrl} 
-                        onChange={e => setGoogleUrl(e.target.value)}
-                        className="bg-[#062115] border border-[#91c13e]/30 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-400 outline-none focus:ring-2 focus:ring-[#91c13e] flex-1 font-mono font-semibold"
-                      />
-                      <button 
-                        onClick={() => fetchGoogleSheetData(googleUrl)}
-                        className="bg-[#91c13e] text-[#062115] hover:bg-[#94D500] font-black uppercase text-xs px-5 py-3 rounded-xl transition-all shadow-md shrink-0 font-extrabold"
-                      >
-                        Connect Live
-                      </button>
+                    <div className="space-y-3">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] uppercase font-black tracking-wider text-slate-300 block">1. Database Jira Tab URL</label>
+                        <input
+                          type="text"
+                          placeholder="Paste 'Database Jira' published CSV URL..."
+                          value={googleUrlJira}
+                          onChange={e => setGoogleUrlJira(e.target.value)}
+                          className="bg-[#062115] border border-[#91c13e]/30 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-400 outline-none focus:ring-2 focus:ring-[#91c13e] w-full font-mono font-semibold"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] uppercase font-black tracking-wider text-slate-300 block">2. Headcount Tracker Tab URL</label>
+                        <input
+                          type="text"
+                          placeholder="Paste 'Headcount Tracker - Linked' published CSV URL..."
+                          value={googleUrlHc}
+                          onChange={e => setGoogleUrlHc(e.target.value)}
+                          className="bg-[#062115] border border-[#91c13e]/30 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-400 outline-none focus:ring-2 focus:ring-[#91c13e] w-full font-mono font-semibold"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] uppercase font-black tracking-wider text-slate-300 block">3. White Belt Training Tab URL</label>
+                        <input
+                          type="text"
+                          placeholder="Paste 'White Belt Training OPEX Tracking' published CSV URL..."
+                          value={googleUrlTr}
+                          onChange={e => setGoogleUrlTr(e.target.value)}
+                          className="bg-[#062115] border border-[#91c13e]/30 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-400 outline-none focus:ring-2 focus:ring-[#91c13e] w-full font-mono font-semibold"
+                        />
+                      </div>
+                      <div className="flex justify-end">
+                        <button
+                          onClick={fetchThreeSheets}
+                          className="bg-[#91c13e] text-[#062115] hover:bg-[#94D500] font-black uppercase text-xs px-6 py-3 rounded-xl transition-all shadow-md shrink-0 font-extrabold tracking-wider"
+                        >
+                          Connect All 3 Tabs
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
