@@ -775,7 +775,7 @@
 
       // 🔄 Auto-load Google Sheet URL if saved in localStorage on startup
       useEffect(() => {
-        const savedUrl = localStorage.getItem('hellofresh_google_url');
+        const savedUrl = localStorage.getItem('hf_opex_portal_v2');
         if (savedUrl) {
           setGoogleUrl(savedUrl);
           fetchGoogleSheetData(savedUrl, true);
@@ -911,7 +911,7 @@
             const reconciled = reconcileSpreadsheets(sheetsMap);
             if (reconciled) {
               setData(reconciled);
-              localStorage.setItem('hellofresh_google_url', url);
+              localStorage.setItem('hf_opex_portal_v2', url);
               setSyncSource('Google Sheets (Auto-Syncing)');
               setStatusMessage('🟢 Live Google Sheets Canvas Tab Synced successfully!');
             } else {
@@ -921,7 +921,7 @@
             const arrayBuffer = await response.arrayBuffer();
             const workbook = XLSX.read(arrayBuffer, { type: 'array' });
             processWorkbook(workbook);
-            localStorage.setItem('hellofresh_google_url', url);
+            localStorage.setItem('hf_opex_portal_v2', url);
             setSyncSource('Google Sheets (Auto-Syncing)');
             setStatusMessage('🟢 Live Google Sheet Workbook Synced successfully!');
           }
@@ -986,7 +986,7 @@
         setData(initialMockData);
         setSyncSource('Default Mock Database');
         setStatusMessage('Reverted to system mockup portfolio.');
-        localStorage.removeItem('hellofresh_google_url');
+        localStorage.removeItem('hf_opex_portal_v2');
         setGoogleUrl('');
         setPasteJira('');
         setPasteHeadcount('');
