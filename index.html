@@ -1131,10 +1131,15 @@
           'se/kg - payroll',
           'manila - na - people services'
         ];
+        const isValidDept = (val) => {
+          const v = (val || '').toString().toLowerCase().trim();
+          if (!v) return false;
+          return VALID_COMPONENTS.some(c => v.includes(c) || c.includes(v));
+        };
         return allRows.filter(item => {
           const row = item.row;
-          const deptVal = (row[colIndex.dept] || "").toString().trim().toLowerCase();
-          if (!deptVal || !VALID_COMPONENTS.includes(deptVal)) return false;
+          const deptVal = (row[colIndex.dept] || "").toString().trim();
+          if (!isValidDept(deptVal)) return false;
           if (!row[colIndex.summary] && !row[colIndex.issueKey]) return false;
           return true;
         }).map(item => {
@@ -2500,9 +2505,10 @@
           if (issueIdVal === undefined || issueIdVal === null || String(issueIdVal).trim() === '') {
             return false;
           }
-          const deptVal = (row[opexCol.dept] || "").toString().trim().toLowerCase();
+          const deptVal = (row[opexCol.dept] || "").toString().trim();
           const VALID_DEPTS = ['se/kg - people services','manila - people service','na - people service','opex','se/kg - payroll','manila - na - people services'];
-          if (!deptVal || !VALID_DEPTS.includes(deptVal)) return false;
+          const deptLower = deptVal.toLowerCase();
+          if (!deptVal || !VALID_DEPTS.some(c => deptLower.includes(c) || c.includes(deptLower))) return false;
           return true;
         }).map(item => {
           const row = item.row;
