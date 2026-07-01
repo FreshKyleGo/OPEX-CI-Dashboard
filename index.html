@@ -623,24 +623,34 @@
         const response = await fetch(exportUrl);
         if (!response.ok) throw new Error("Failed to fetch CSV. Make sure the tab is published.");
         const csvText = await response.text();
-        const lines = csvText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
-        return lines.map(line => {
-          const result = [];
-          let current = '';
-          let inQuotes = false;
-          for (let i = 0; i < line.length; i++) {
-            const char = line[i];
-            if (char === '"') {
-              if (inQuotes && line[i+1] === '"') { current += '"'; i++; }
-              else { inQuotes = !inQuotes; }
-            } else if (char === ',' && !inQuotes) {
-              result.push(current.trim());
-              current = '';
-            } else {
-              current += char;
-            }
+        const rows = [];
+        let current = '';
+        let inQuotes = false;
+        for (let i = 0; i < csvText.length; i++) {
+          const char = csvText[i];
+          if (char === '"') {
+            if (inQuotes && csvText[i+1] === '"') { current += '"'; i++; }
+            else { inQuotes = !inQuotes; current += char; }
+          } else if ((char === '\n' || (char === '\r' && csvText[i+1] === '\n')) && !inQuotes) {
+            if (char === '\r') i++;
+            rows.push(current);
+            current = '';
+          } else {
+            current += char;
           }
-          result.push(current.trim());
+        }
+        if (current) rows.push(current);
+        return rows.map(line => {
+          const result = []; let cur = '', inQ = false;
+          for (let i = 0; i < line.length; i++) {
+            const c = line[i];
+            if (c === '"') {
+              if (inQ && line[i+1] === '"') { cur += '"'; i++; }
+              else { inQ = !inQ; }
+            } else if (c === ',' && !inQ) { result.push(cur.trim()); cur = ''; }
+            else { cur += c; }
+          }
+          result.push(cur.trim());
           return result;
         }).filter(row => row.some(cell => cell !== ''));
       };
@@ -1125,16 +1135,11 @@
           const issueIdVal = row[colIndex.issueId];
           return issueIdVal !== undefined && issueIdVal !== null && String(issueIdVal).trim() !== '';
         });
-        const VALID_COMPONENTS = ['se/kg - people services','manila - people service','na - people service','opex','se/kg - payroll','manila - na - people services'];
-        const isValidDept = (val) => {
-          const v = (val || '').toString().toLowerCase().trim();
-          if (!v) return false;
-          return VALID_COMPONENTS.some(c => v === c);
-        };
         return allRows.filter(item => {
           const row = item.row;
           const deptVal = (row[colIndex.dept] || "").toString().trim();
-          if (!isValidDept(deptVal)) return false;
+          const deptLower = deptVal.toLowerCase();
+          if (!deptVal || deptLower === "unassigned" || deptLower.includes("hr software support")) return false;
           if (!row[colIndex.summary] && !row[colIndex.issueKey]) return false;
           return true;
         }).map(item => {
