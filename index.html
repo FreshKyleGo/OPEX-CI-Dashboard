@@ -353,6 +353,7 @@
       cHdr[14]="End Date"; cHdr[15]="Planned End Date"; cHdr[16]="Business impact";
       cHdr[17]="Customer impact"; cHdr[18]="Assignee"; cHdr[19]="Solution";
       cHdr[20]="Blocker Category"; cHdr[21]="Stage Gate"; cHdr[22]="Case Label"; cHdr[23]="Concise Description";
+      cHdr[29]="Case Label"; cHdr[30]="Concise Description";
       cHdr[31]="Leader"; cHdr[32]="Full Legal Name"; cHdr[33]="Status"; cHdr[34]="Worker Type";
       cHdr[35]="Job Family"; cHdr[36]="Management Level"; cHdr[37]="Location"; cHdr[38]="Country";
       cHdr[39]="Department/Tribe"; cHdr[40]="Employee ID"; cHdr[41]="Hire Date";
@@ -378,7 +379,7 @@
         cr[16]=g(r,jCol.businessImpact); cr[17]=g(r,jCol.customerImpact);
         cr[18]=g(r,jCol.assignee); cr[19]=g(r,jCol.solution);
         cr[20]=g(r,jCol.blockerCategory); cr[21]=g(r,jCol.stageGate);
-        cr[22]=g(r,jCol.caseLabelFlag); cr[23]=g(r,jCol.caseLabelValue);
+        cr[29]=g(r,jCol.caseLabelFlag); cr[30]=g(r,jCol.caseLabelValue);
         out.push({ row: cr, index_: idx++ });
       }
 
