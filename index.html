@@ -1118,23 +1118,11 @@
           const issueIdVal = row[colIndex.issueId];
           return issueIdVal !== undefined && issueIdVal !== null && String(issueIdVal).trim() !== '';
         });
-        // Debug: log unique Components values
-        const deptValues = [...new Set(allRows.map(item => JSON.stringify(item.row[colIndex.dept])))];
-        console.log('DEPT VALUES (unique):', deptValues);
-        console.log('DEPT col index:', colIndex.dept);
-        return allRows.filter(item => {
-        const VALID_COMPONENTS = [
-          'se/kg - people services',
-          'manila - people service',
-          'na - people service',
-          'opex',
-          'se/kg - payroll',
-          'manila - na - people services'
-        ];
+        const VALID_COMPONENTS = ['se/kg - people services','manila - people service','na - people service','opex','se/kg - payroll','manila - na - people services'];
         const isValidDept = (val) => {
           const v = (val || '').toString().toLowerCase().trim();
           if (!v) return false;
-          return VALID_COMPONENTS.some(c => v.includes(c) || c.includes(v));
+          return VALID_COMPONENTS.some(c => v === c);
         };
         return allRows.filter(item => {
           const row = item.row;
