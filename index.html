@@ -318,19 +318,14 @@
       const tH = trainingRows[0] || [];
 
       const jCol = {
-        issueKey: findColIndex(jH, "Issue key"), issueId: findColIndex(jH, "Issue id"),
-        summary: findColIndex(jH, "Summary"), reporter: findColIndex(jH, "Reporter"),
-        dept: findColIndex(jH, "Components"), status: findColIndex(jH, "Status"),
-        description: findColIndex(jH, "Description"), created: findColIndex(jH, "Created"),
-        effectiveSavings: findColIndex(jH, "Effective Savings"), totalCount: findColIndex(jH, "Total count"),
-        startDate: findColIndex(jH, "Start Date") !== -1 ? findColIndex(jH, "Start Date") : findColIndex(jH, "Start date"),
-        actualEnd: findColIndex(jH, "End Date"), plannedEnd: findColIndex(jH, "Planned End Date"),
-        businessImpact: findColIndex(jH, "Business impact"), customerImpact: findColIndex(jH, "Customer impact"),
-        assignee: findColIndex(jH, "Assignee"), solution: findColIndex(jH, "Solution"),
-        blockerCategory: findColIndex(jH, "Blocker Category"),
-        stageGate: findColIndex(jH, "Stage Gate") !== -1 ? findColIndex(jH, "Stage Gate") : findColIndex(jH, "Custom field (Stage Gate)"),
-        caseLabelFlag: findColIndex(jH, "Case Label") !== -1 ? findColIndex(jH, "Case Label") : 29,
-        caseLabelValue: findColIndex(jH, "Concise Description") !== -1 ? findColIndex(jH, "Concise Description") : 30
+        issueKey: 0, issueId: 1, summary: 2, reporter: 3,
+        dept: 5, status: 14, description: 19, created: 26,
+        effectiveSavings: 8, totalCount: 9,
+        startDate: 11, actualEnd: 13, plannedEnd: 12,
+        businessImpact: 7, customerImpact: 10,
+        assignee: 17, solution: 20,
+        blockerCategory: 16, stageGate: 15,
+        caseLabelFlag: 29, caseLabelValue: 30
       };
 
       const hCol = {
@@ -627,13 +622,22 @@
         const response = await fetch(exportUrl);
         if (!response.ok) throw new Error("Failed to fetch CSV. Make sure the tab is published.");
         const csvText = await response.text();
-        return csvText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').map(line => {
-          const result = []; let current = '', inQuotes = false;
+        const lines = csvText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+        return lines.map(line => {
+          const result = [];
+          let current = '';
+          let inQuotes = false;
           for (let i = 0; i < line.length; i++) {
             const char = line[i];
-            if (char === '"') { inQuotes = !inQuotes; }
-            else if (char === ',' && !inQuotes) { result.push(current.trim()); current = ''; }
-            else { current += char; }
+            if (char === '"') {
+              if (inQuotes && line[i+1] === '"') { current += '"'; i++; }
+              else { inQuotes = !inQuotes; }
+            } else if (char === ',' && !inQuotes) {
+              result.push(current.trim());
+              current = '';
+            } else {
+              current += char;
+            }
           }
           result.push(current.trim());
           return result;
