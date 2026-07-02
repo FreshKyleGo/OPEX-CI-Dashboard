@@ -1179,7 +1179,7 @@
           return true;
         }).map(item => {
           const row = item.row;
-          const createdDate = parseDateSafe(row[colIndex.created]);
+          const createdDate = parseDateSafe(row[colIndex.startDate]) || parseDateSafe(row[colIndex.created]);
           const status = row[colIndex.status] || "Open";
           const statusLower = status.toLowerCase().trim();
           const isCurrentPipeline = ['open', 'on hold', 'on-hold', 'in progress', 'reopened'].includes(statusLower);
@@ -1241,7 +1241,7 @@
             issueKey: row[colIndex.issueKey] || 'TBD',
             assignee: row[colIndex.assignee],
             startDate: parseDateSafe(row[colIndex.startDate]),
-            endDate: parseDateSafe(row[colIndex.actualEnd]) || parseDateSafe(row[colIndex.plannedEnd]),
+            endDate: (isCompleted || isClosed) ? parseDateSafe(row[colIndex.actualEnd]) : parseDateSafe(row[colIndex.plannedEnd]),
             description: row[colIndex.description],
             businessImpact: row[colIndex.businessImpact],
             customerImpact: row[colIndex.customerImpact],
@@ -1724,7 +1724,7 @@
                                       </p>
                                     </div>
                                     <div>
-                                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Project End Date</span>
+                                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{row.isCompleted || row.isClosed ? 'Project End Date' : 'Planned End Date'}</span>
                                       <p className="font-bold text-slate-700 mt-0.5">
                                         {row.endDate ? row.endDate.toLocaleDateString() : 'N/A'}
                                       </p>
