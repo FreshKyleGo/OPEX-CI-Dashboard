@@ -416,6 +416,12 @@
     function App() {
       const [view, setView] = useState('opex');
       const [integrationOpen, setIntegrationOpen] = useState(false);
+      const [syncPrompt, setSyncPrompt] = useState(false);
+
+      const showSyncPrompt = () => {
+        setSyncPrompt(true);
+        setTimeout(() => setSyncPrompt(false), 4000);
+      };
       const [integrationTab, setIntegrationTab] = useState('googlesheets');
       const [pasteMode, setPasteMode] = useState('consolidated');
       const [syncSource, setSyncSource] = useState('Default Mock Database');
@@ -801,10 +807,28 @@
               })}
             </nav>
 
-            {/* INTEGRATION TOGGLE BUTTON */}
-            <div className="flex items-center gap-3">
-              <button 
-                onClick={() => setIntegrationOpen(!integrationOpen)} 
+            {/* HEADER ACTION BUTTONS */}
+            <div className="flex items-center gap-2">
+              <a
+                href="https://hellofresh.slack.com/archives/C0BBAAS180L"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-[#3a1c5c] hover:bg-[#4a2570] text-white border border-purple-500/30 px-3 py-1.5 rounded-lg text-xs font-black uppercase flex items-center gap-2 tracking-wider transition-all"
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/></svg>
+                <span>#POPS-OPEX</span>
+              </a>
+              <a
+                href="https://mail.google.com/mail/?view=cm&to=kyle.go@helloconnect.org&subject=OPEX%20CI%20Dashboard%20-%20Question"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-emerald-950 hover:bg-emerald-900 text-white border border-[#91c13e]/30 px-3 py-1.5 rounded-lg text-xs font-black uppercase flex items-center gap-2 tracking-wider transition-all"
+              >
+                <Icon name="Mail" className="w-3.5 h-3.5 text-[#91c13e]" />
+                <span>Got a Question?</span>
+              </a>
+              <button
+                onClick={showSyncPrompt}
                 className="bg-emerald-950 hover:bg-emerald-900 text-slate-100 border border-[#91c13e]/30 px-3 py-1.5 rounded-lg text-xs font-black uppercase flex items-center gap-2 tracking-wider transition-all"
               >
                 <Icon name="RefreshCw" className="w-3.5 h-3.5 text-[#91c13e]" />
@@ -812,6 +836,17 @@
               </button>
             </div>
           </header>
+
+          {/* SYNC TOAST NOTIFICATION */}
+          {syncPrompt && (
+            <div className="fixed top-20 right-6 z-50 bg-[#062115] border border-[#91c13e]/40 text-white px-5 py-3.5 rounded-2xl shadow-xl animate-fade-in flex items-center gap-3 max-w-sm">
+              <Icon name="CheckCircle2" className="w-5 h-5 text-[#91c13e] shrink-0" />
+              <div>
+                <p className="text-xs font-black text-[#91c13e] uppercase tracking-wider">All Systems Synced</p>
+                <p className="text-xs text-slate-300 font-semibold mt-0.5">Data is already synced with the latest version of your Google Sheets. Updates reflect automatically on every load.</p>
+              </div>
+            </div>
+          )}
 
           {/* DYNAMIC COLLAPSIBLE DATA INTEGRATION PANEL */}
           {integrationOpen && (
