@@ -1210,7 +1210,7 @@
 
           const hoursPerYear = (rawEffSavings * rawTotalCount) / 60;
           const fteValue = hoursPerYear / 2080;
-          const potentialSavings = fteValue * 75000;
+          const potentialSavings = fteValue * 36000;
           
           const mIdx = createdDate ? createdDate.getMonth() : null;
           const quarter = mIdx !== null ? Math.floor(mIdx / 3) + 1 : null;
@@ -1310,23 +1310,23 @@
         const delayCount = filteredActiveData.filter(d => d.isDelayed).length;
 
         let multiplier = 1;
-        let targetGoalText = "Goal: 2.60 FTE saved per quarter";
+        let targetGoalText = "Goal: 2.50 FTE saved per quarter";
         if (monthFilter !== 'All') {
           multiplier = 1 / 3;
-          targetGoalText = "Goal: 0.87 FTE saved per month";
+          targetGoalText = "Goal: 0.83 FTE saved per month";
         } else if (quarterFilter !== 'All') {
           multiplier = 1;
-          targetGoalText = "Goal: 2.60 FTE saved per quarter";
+          targetGoalText = "Goal: 2.50 FTE saved per quarter";
         } else if (halfYearFilter !== 'All') {
           multiplier = 2;
-          targetGoalText = "Goal: 5.20 FTE saved per half year";
+          targetGoalText = "Goal: 5.00 FTE saved per half year";
         } else {
           multiplier = 4;
-          targetGoalText = "Goal: 10.40 FTE saved per year";
+          targetGoalText = "Goal: 10.00 FTE saved per year";
         }
 
-        const fteTarget = 2.6 * multiplier;
-        const savingsTarget = 195000 * multiplier;
+        const fteTarget = 2.5 * multiplier;
+        const savingsTarget = 90000 * multiplier;
 
         return {
           pipelineCount,
@@ -1464,7 +1464,7 @@
           {/* Five Metrics KPI Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
             <MetricCard label="CURRENT PIPELINE" value={stats.pipelineCount} formula="Active Projects" icon={<Icon name="Clock" className="w-5 h-5 text-emerald-600" />} />
-            <MetricCard label={<div className="flex items-center gap-1"><span>{potentialActualFilter === 'Potential' ? 'Potential' : 'Actual'} Savings</span> {potActToggle}</div>} value={'€' + Math.round(stats.savings).toLocaleString()} formula="Sum of FTE x 75,000 euros" color={stats.fteProgress >= 96 ? 'text-[#062115]' : 'text-[#e11d48]'} icon={<Icon name="TrendingUp" className="w-5 h-5 text-lime-600" />} />
+            <MetricCard label={<div className="flex items-center gap-1"><span>{potentialActualFilter === 'Potential' ? 'Potential' : 'Actual'} Savings</span> {potActToggle}</div>} value={'€' + Math.round(stats.savings).toLocaleString()} formula="Sum of FTE x 36,000 euros" color={stats.fteProgress >= 96 ? 'text-[#062115]' : 'text-[#e11d48]'} icon={<Icon name="TrendingUp" className="w-5 h-5 text-lime-600" />} />
             <MetricCard label={<div className="flex items-center gap-1"><span>{potentialActualFilter === 'Potential' ? 'FTE Yield' : 'Actual FTE Yield'}</span> {potActToggle}</div>} value={stats.fte.toFixed(2)} formula="Sum of (mins x count / 60) / 2080" color={stats.fteProgress >= 96 ? 'text-[#062115]' : 'text-[#e11d48]'} icon={<Icon name="Users" className="w-5 h-5 text-indigo-600" />} />
             <MetricCard label="Efficiency Target" value={Math.round(stats.fteProgress) + '%'} sub={stats.targetGoalText} secondarySub={'Target: €' + Math.round(stats.savingsTarget).toLocaleString() + ' | Target: ' + stats.fteTarget.toFixed(2) + ' FTE'} showProgress progress={stats.fteProgress} color={stats.fteProgress >= 96 ? 'text-[#059669]' : stats.fteProgress >= 80 ? 'text-amber-500' : 'text-rose-600'} progressColor={stats.fteProgress >= 96 ? 'bg-[#059669]' : stats.fteProgress >= 80 ? 'bg-amber-500' : 'bg-rose-500'} icon={<Icon name="Target" className={'w-5 h-5 ' + (stats.fteProgress >= 96 ? 'text-[#059669]' : stats.fteProgress >= 80 ? 'text-amber-500' : 'text-rose-600')} />} />
             <MetricCard label="Project Health" value={Math.round(stats.delayRate) + '%'} formula="Delayed / total visible x 100" color={stats.delayRate > 20 ? 'text-rose-600' : 'text-[#062115]'} icon={<Icon name="AlertTriangle" className="w-5 h-5 text-amber-500" />} />
