@@ -838,7 +838,14 @@
             </div>
           </header>
 
-          {/* SYNC TOAST NOTIFICATION */}
+          {/* Restricted Access Banner */}
+          <div className="bg-amber-950/80 border-b border-amber-700/50 px-4 py-1.5 flex items-center justify-center gap-2 shrink-0">
+            <span className="text-base">🚨</span>
+            <span className="text-[11px] font-black uppercase tracking-widest text-amber-300">
+              People Ops Leadership Only — Confidential. Do not share this link beyond authorized personnel.
+            </span>
+            <span className="text-base">🚨</span>
+          </div>
           {syncPrompt && (
             <div className="fixed top-20 right-6 z-50 bg-[#062115] border border-[#91c13e]/40 text-white px-5 py-3.5 rounded-2xl shadow-xl animate-fade-in flex items-center gap-3 max-w-sm">
               <Icon name="CheckCircle2" className="w-5 h-5 text-[#91c13e] shrink-0" />
