@@ -335,7 +335,7 @@
         jobFamily: findColIndex(hH, "Job Family"), level: findColIndex(hH, "Management Level"),
         location: findColIndex(hH, "Location"), country: findColIndex(hH, "Country"),
         tribe: findColIndex(hH, "Department/Tribe"), empId: findColIndex(hH, "Employee ID"),
-        hireDate: findColIndex(hH, "Hire Date")
+        hireDate: findColIndex(hH, "Hire Date"), ftePct: findColIndex(hH, "FTE %")
       };
 
       const tCol = {
@@ -393,7 +393,7 @@
         cr[31]=g(r,hCol.leader); cr[32]=g(r,hCol.name); cr[33]=g(r,hCol.status);
         cr[34]=g(r,hCol.workerType); cr[35]=g(r,hCol.jobFamily); cr[36]=g(r,hCol.level);
         cr[37]=g(r,hCol.location); cr[38]=g(r,hCol.country); cr[39]=g(r,hCol.tribe);
-        cr[40]=g(r,hCol.empId); cr[41]=g(r,hCol.hireDate);
+        cr[40]=g(r,hCol.empId); cr[41]=g(r,hCol.hireDate); cr[42]=g(r,hCol.ftePct);
         out.push({ row: cr, index_: idx++ });
       }
 
@@ -1806,6 +1806,7 @@
           tribe: findColIndex(headers, "Department/Tribe", 31, 63),
           empId: findColIndex(headers, "Employee ID", 31, 63),
           hireDate: findColIndex(headers, "Hire Date", 31, 63),
+          ftePct: findColIndex(headers, "FTE %", 31, 63),
         };
       }, [headers]);
 
@@ -1819,6 +1820,8 @@
           })
           .map(item => {
             const row = item.row;
+            const rawFtePct = parseFloat(safeVal(row, col.ftePct) || '100');
+            const fteWeight = rawFtePct === 50 ? 0.5 : 1;
             return {
               id: 'hc-' + item.index_,
               index_: item.index_,
@@ -1833,15 +1836,17 @@
               country: safeVal(row, col.country) || '—',
               tribe: safeVal(row, col.tribe) || 'Unspecified',
               hireDate: parseDateSafe(safeVal(row, col.hireDate)),
+              ftePct: rawFtePct,
+              fteWeight,
             };
           });
       }, [data, col]);
 
       const stats = useMemo(() => {
-        const total = processedRows.length;
-        const active = processedRows.filter(r => r.status.toLowerCase().trim() === 'active').length;
-        const onLeave = processedRows.filter(r => r.status.toLowerCase().trim() === 'on leave').length;
-        const contingent = processedRows.filter(r => r.workerType.toLowerCase().includes('contingent')).length;
+        const total = processedRows.reduce((sum, r) => sum + r.fteWeight, 0);
+        const active = processedRows.filter(r => r.status.toLowerCase().trim() === 'active').reduce((sum, r) => sum + r.fteWeight, 0);
+        const onLeave = processedRows.filter(r => r.status.toLowerCase().trim() === 'on leave').reduce((sum, r) => sum + r.fteWeight, 0);
+        const contingent = processedRows.filter(r => r.workerType.toLowerCase().includes('contingent')).reduce((sum, r) => sum + r.fteWeight, 0);
         const countries = new Set(processedRows.map(r => r.country).filter(Boolean)).size;
         return { total, active, onLeave, contingent, countries };
       }, [processedRows]);
