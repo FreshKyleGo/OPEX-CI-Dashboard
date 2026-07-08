@@ -1821,7 +1821,7 @@
           .map(item => {
             const row = item.row;
             const rawFtePct = parseFloat(safeVal(row, col.ftePct) || '100');
-            const fteWeight = rawFtePct === 50 ? 0.5 : 1;
+            const fteWeight = 1;
             return {
               id: 'hc-' + item.index_,
               index_: item.index_,
