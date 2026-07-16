@@ -1193,13 +1193,15 @@
           return true;
         }).map(item => {
           const row = item.row;
-          const createdDate = parseDateSafe(row[colIndex.startDate]) || parseDateSafe(row[colIndex.created]);
           const status = row[colIndex.status] || "Open";
           const statusLower = status.toLowerCase().trim();
           const isCurrentPipeline = ['open', 'on hold', 'on-hold', 'in progress', 'reopened'].includes(statusLower);
           const isSubmitted = ['on hold', 'open', 'reopened', 'in progress', 'on-hold'].includes(statusLower);
           const isCompleted = ['resolved', 'done'].includes(statusLower);
           const isClosed = statusLower === 'closed';
+          const actualEndDateForBucket = parseDateSafe(row[colIndex.actualEnd]);
+          // Resolved projects: bucket by completion date (when the benefit was realized), not start date
+          const createdDate = (isCompleted && actualEndDateForBucket) ? actualEndDateForBucket : (parseDateSafe(row[colIndex.startDate]) || parseDateSafe(row[colIndex.created]));
           
           const parseNum = (v) => {
             if (typeof v === 'number') return v;
