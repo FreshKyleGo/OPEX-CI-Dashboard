@@ -226,7 +226,7 @@
 
     // Component for Regional Refresh Bar
     function RegionalRefreshBar({ view }) {
-      const REFRESH_HOURS = 1;
+      const REFRESH_MINUTES = 5; // Jira/case data now syncs every 5 minutes (was hourly)
       const [tick, setTick] = useState(0);
 
       useEffect(() => {
@@ -238,15 +238,16 @@
 
       const now = new Date();
       const isMonthly = view === 'headcount' || view === 'training';
-      const flooredUTCHours = Math.floor(now.getUTCHours() / REFRESH_HOURS) * REFRESH_HOURS;
+      const totalUTCMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+      const flooredUTCMinutes = Math.floor(totalUTCMinutes / REFRESH_MINUTES) * REFRESH_MINUTES;
       const lastSyncUTC = isMonthly
         ? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0))
         : new Date(Date.UTC(
             now.getUTCFullYear(),
             now.getUTCMonth(),
             now.getUTCDate(),
-            flooredUTCHours,
             0,
+            flooredUTCMinutes,
             0,
             0
           ));
@@ -257,7 +258,7 @@
 
       const nextSyncUTC = isMonthly
         ? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 0, 0, 0))
-        : new Date(lastSyncUTC.getTime() + REFRESH_HOURS * 60 * 60 * 1000);
+        : new Date(lastSyncUTC.getTime() + REFRESH_MINUTES * 60 * 1000);
       const msToNext = nextSyncUTC.getTime() - now.getTime();
       const hoursToNext = Math.floor(msToNext / (1000 * 60 * 60));
       const minutesToNext = Math.floor((msToNext % (1000 * 60 * 60)) / (1000 * 60));
