@@ -1147,6 +1147,7 @@
       const [tableHealthFilter, setTableHealthFilter] = useState('All');
       const [tableCaseLabelFilter, setTableCaseLabelFilter] = useState('All');
       const [tableStageGateFilter, setTableStageGateFilter] = useState('All');
+      const [tableProcessTierFilter, setTableProcessTierFilter] = useState('All');
 
       const [potentialActualFilter, setPotentialActualFilter] = useState('Potential');
       const [expandedRow, setExpandedRow] = useState(null);
@@ -1333,6 +1334,10 @@
         return ['All', ...new Set(closedItems.map(d => d.stageGate).filter(Boolean))].sort();
       }, [globallyFilteredData]);
 
+      const processTierOptions = useMemo(() => {
+        return ['All', ...new Set(globallyFilteredData.map(d => d.processTier).filter(Boolean))].sort();
+      }, [globallyFilteredData]);
+
       const filteredActiveData = useMemo(() => {
         return potentialActualFilter === 'Potential' ? activeCiData : activeCiData.filter(d => d.isCompleted);
       }, [activeCiData, potentialActualFilter]);
@@ -1424,7 +1429,8 @@
           const matchesHealth = tableHealthFilter === 'All' || (d.isCurrentPipeline && d.projectHealth === tableHealthFilter);
           const matchesCaseLabel = tableCaseLabelFilter === 'All' || d.caseLabel === tableCaseLabelFilter;
           const matchesStageGate = tableStageGateFilter === 'All' || d.stageGate === tableStageGateFilter;
-          return matchesOwner && matchesStatus && matchesHealth && matchesCaseLabel && matchesStageGate;
+          const matchesProcessTier = tableProcessTierFilter === 'All' || d.processTier === tableProcessTierFilter;
+          return matchesOwner && matchesStatus && matchesHealth && matchesCaseLabel && matchesStageGate && matchesProcessTier;
         });
         return filtered.sort((a, b) => {
           let aVal = a[sortField];
@@ -1434,7 +1440,7 @@
           }
           return sortAsc ? (aVal - bVal) : (bVal - aVal);
         });
-      }, [globallyFilteredData, tableOwnerFilter, tableStatusFilter, tableHealthFilter, tableCaseLabelFilter, tableStageGateFilter, sortField, sortAsc]);
+      }, [globallyFilteredData, tableOwnerFilter, tableStatusFilter, tableHealthFilter, tableCaseLabelFilter, tableStageGateFilter, tableProcessTierFilter, sortField, sortAsc]);
 
       const yearsOptions = useMemo(() => ['All', ...new Set(processedData.map(d => d.year.toString()).filter(y => y !== 'Unknown' && y !== '1899'))].sort(), [processedData]);
       const deptsOptions = useMemo(() => ['All', ...new Set(processedData.map(d => d.dept))].sort(), [processedData]);
@@ -1636,6 +1642,10 @@
                 <select value={tableStageGateFilter} onChange={e => setTableStageGateFilter(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold uppercase tracking-wider text-slate-700 outline-none focus:ring-2 focus:ring-[#91c13e] cursor-pointer">
                   <option value="All">All Stage Gates</option>
                   {stageGateOptions.filter(g => g !== 'All').map(g => <option key={g} value={g}>{g}</option>)}
+                </select>
+                <select value={tableProcessTierFilter} onChange={e => setTableProcessTierFilter(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold uppercase tracking-wider text-slate-700 outline-none focus:ring-2 focus:ring-[#91c13e] cursor-pointer">
+                  <option value="All">All Tier</option>
+                  {processTierOptions.filter(t => t !== 'All').map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
                 <select
                   value={SORT_OPTIONS.find(o => o.field === sortField && o.asc === sortAsc)?.key || ''}
