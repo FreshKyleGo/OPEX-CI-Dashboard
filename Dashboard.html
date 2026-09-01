@@ -130,7 +130,10 @@
       if (cleanA === cleanB) return true;
       const aliases = [
         ["debbie benitez", "debbie cumplido"],
-        ["andrew clark", "drew clark"]
+        ["andrew clark", "drew clark"],
+        ["euriza ann de leon-binarao", "yuri de leon"],
+        ["arsenia roque", "arcie roque"],
+        ["marie abigail aguirre", "abby aguirre"]
       ];
       for (const pair of aliases) {
         if ((cleanA === pair[0] && cleanB === pair[1]) || (cleanA === pair[1] && cleanB === pair[0])) {
@@ -2675,7 +2678,7 @@
             return false;
           }
           const deptVal = (row[opexCol.dept] || "").toString().trim();
-          const VALID_DEPTS = ['se/kg - people services','manila - people service','na - people service','opex','se/kg - payroll','manila - na - people services'];
+          const VALID_DEPTS = ['se/kg - people services','manila - people service','na - people service','opex','se/kg - payroll','manila - na - people services','anz - people service'];
           const deptLower = deptVal.toLowerCase();
           if (!deptVal || !VALID_DEPTS.some(c => deptLower.includes(c) || c.includes(deptLower))) return false;
           return true;
