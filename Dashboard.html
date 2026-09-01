@@ -1298,6 +1298,8 @@
             processTier: String(row[colIndex.processTier] || '').trim(),
             affectedMarkets: String(row[colIndex.affectedMarkets] || '').trim(),
             projectHealth,
+            effectiveSavings: rawEffSavings,
+            totalCount: rawTotalCount,
             createdAt: parseDateSafe(row[colIndex.created])
           };
         });
@@ -1861,6 +1863,20 @@
                                       <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{row.isCompleted || row.isClosed ? 'Project End Date' : 'Planned End Date'}</span>
                                       <p className="font-bold text-slate-700 mt-0.5">
                                         {row.endDate ? row.endDate.toLocaleDateString() : 'N/A'}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-4 pt-2">
+                                    <div>
+                                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Time / Occurrence (min)</span>
+                                      <p className="font-bold text-slate-700 mt-0.5">
+                                        {parseFloat(row.effectiveSavings) > 0 ? parseFloat(row.effectiveSavings).toLocaleString() : 'N/A'}
+                                      </p>
+                                    </div>
+                                    <div>
+                                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">No. of Occurrences</span>
+                                      <p className="font-bold text-slate-700 mt-0.5">
+                                        {parseFloat(row.totalCount) > 0 ? parseFloat(row.totalCount).toLocaleString() : 'N/A'}
                                       </p>
                                     </div>
                                   </div>
