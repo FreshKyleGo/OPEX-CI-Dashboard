@@ -120,6 +120,7 @@
       str = str.replace(/\./g, ' ');
       str = str.replace(/ß/g, 'ss');
       str = str.replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue');
+      str = str.replace(/ł/g, 'l');
       return str.replace(/\s+/g, ' ').trim();
     };
 
@@ -133,7 +134,8 @@
         ["andrew clark", "drew clark"],
         ["euriza ann de leon-binarao", "yuri de leon"],
         ["arsenia roque", "arcie roque"],
-        ["marie abigail aguirre", "abby aguirre"]
+        ["marie abigail aguirre", "abby aguirre"],
+        ["maj bautista", "marie jillian dominique reyes bautista"]
       ];
       for (const pair of aliases) {
         if ((cleanA === pair[0] && cleanB === pair[1]) || (cleanA === pair[1] && cleanB === pair[0])) {
