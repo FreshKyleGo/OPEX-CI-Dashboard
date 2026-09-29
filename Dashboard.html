@@ -2648,6 +2648,9 @@
       const [selectedYear, setSelectedYear] = useState('2026');
       const [selectedQuarter, setSelectedQuarter] = useState('All');
       const [searchQuery, setSearchQuery] = useState('');
+      const [supervisorFilter, setSupervisorFilter] = useState('All');
+      const [statusFilter, setStatusFilter] = useState('All');
+      const [ideaSortAsc, setIdeaSortAsc] = useState(null); // null = unsorted, true = low-to-high, false = high-to-low
 
       const headers = useMemo(() => data[0]?.row || [], [data]);
 
@@ -2740,14 +2743,27 @@
         return { total, submitted, pct };
       }, [participationRoster]);
 
+      const supervisorOptions = useMemo(() => {
+        return ['All', ...new Set(roster.map(p => p.leader).filter(Boolean))].sort();
+      }, [roster]);
+
       const filteredRoster = useMemo(() => {
-        return participationRoster.filter(p => {
+        const filtered = participationRoster.filter(p => {
           const q = searchQuery.toLowerCase();
           const nameMatch = p.name.toLowerCase().includes(q);
           const leaderMatch = p.leader.toLowerCase().includes(q);
-          return nameMatch || leaderMatch;
+          const matchesSearch = nameMatch || leaderMatch;
+          const matchesSupervisor = supervisorFilter === 'All' || p.leader === supervisorFilter;
+          const matchesStatus = statusFilter === 'All' ||
+            (statusFilter === 'Submitted' && p.hasSubmitted) ||
+            (statusFilter === 'No Submission' && !p.hasSubmitted);
+          return matchesSearch && matchesSupervisor && matchesStatus;
         });
-      }, [participationRoster, searchQuery]);
+        if (ideaSortAsc === null) return filtered;
+        return [...filtered].sort((a, b) =>
+          ideaSortAsc ? a.submissions.length - b.submissions.length : b.submissions.length - a.submissions.length
+        );
+      }, [participationRoster, searchQuery, supervisorFilter, statusFilter, ideaSortAsc]);
 
       return (
         <div className="space-y-6 animate-fade-in">
@@ -2775,6 +2791,15 @@
                   <option value="Q4">Q4</option>
                 </select>
               </div>
+              <select value={supervisorFilter} onChange={e => setSupervisorFilter(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold uppercase tracking-wider text-slate-700 outline-none focus:ring-2 focus:ring-[#91c13e] cursor-pointer">
+                <option value="All">All Supervisors</option>
+                {supervisorOptions.filter(s => s !== 'All').map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold uppercase tracking-wider text-slate-700 outline-none focus:ring-2 focus:ring-[#91c13e] cursor-pointer">
+                <option value="All">All Statuses</option>
+                <option value="Submitted">Submitted</option>
+                <option value="No Submission">No Submission</option>
+              </select>
               <div className="relative flex-1 lg:flex-none">
                 <Icon name="Search" className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input type="text" placeholder="SEARCH ROSTER..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-xs font-bold tracking-wider text-slate-700 placeholder-slate-400 uppercase outline-none focus:ring-2 focus:ring-[#91c13e] w-full lg:w-56" />
@@ -2812,7 +2837,14 @@
                     <th className="py-4 px-6">Staff Member</th>
                     <th className="py-4 px-4">Direct Supervisor</th>
                     <th className="py-4 px-4 text-center">Status</th>
-                    <th className="py-4 px-6 text-right">Count of Ideas</th>
+                    <th
+                      className="py-4 px-6 text-right cursor-pointer select-none hover:text-[#062115]"
+                      onClick={() => setIdeaSortAsc(prev => prev === false ? true : false)}
+                    >
+                      <div className="flex items-center justify-end gap-1">
+                        Count of Ideas <Icon name="ArrowUpDown" className="w-3 h-3" />
+                      </div>
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs">
