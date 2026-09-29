@@ -2831,6 +2831,15 @@
                 <option value="Submitted">Submitted</option>
                 <option value="No Submission">No Submission</option>
               </select>
+              <select
+                value={ideaSortAsc === null ? '' : (ideaSortAsc ? 'asc' : 'desc')}
+                onChange={e => setIdeaSortAsc(e.target.value === '' ? null : e.target.value === 'asc')}
+                className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold uppercase tracking-wider text-slate-700 outline-none focus:ring-2 focus:ring-[#91c13e] cursor-pointer"
+              >
+                <option value="">Sort By</option>
+                <option value="desc">Count of Ideas — High to Low</option>
+                <option value="asc">Count of Ideas — Low to High</option>
+              </select>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
