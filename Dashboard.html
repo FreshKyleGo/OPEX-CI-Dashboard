@@ -2791,15 +2791,6 @@
                   <option value="Q4">Q4</option>
                 </select>
               </div>
-              <select value={supervisorFilter} onChange={e => setSupervisorFilter(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold uppercase tracking-wider text-slate-700 outline-none focus:ring-2 focus:ring-[#91c13e] cursor-pointer">
-                <option value="All">All Supervisors</option>
-                {supervisorOptions.filter(s => s !== 'All').map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-              <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold uppercase tracking-wider text-slate-700 outline-none focus:ring-2 focus:ring-[#91c13e] cursor-pointer">
-                <option value="All">All Statuses</option>
-                <option value="Submitted">Submitted</option>
-                <option value="No Submission">No Submission</option>
-              </select>
               <div className="relative flex-1 lg:flex-none">
                 <Icon name="Search" className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input type="text" placeholder="SEARCH ROSTER..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-xs font-bold tracking-wider text-slate-700 placeholder-slate-400 uppercase outline-none focus:ring-2 focus:ring-[#91c13e] w-full lg:w-56" />
@@ -2829,6 +2820,17 @@
               <span className="bg-slate-50 text-slate-700 text-xs font-black uppercase tracking-wider px-3 py-1.5 rounded-xl font-mono">
                 {filteredRoster.length} listed
               </span>
+            </div>
+            <div className="px-6 py-4 border-b border-slate-100 flex flex-wrap items-center gap-3">
+              <select value={supervisorFilter} onChange={e => setSupervisorFilter(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold uppercase tracking-wider text-slate-700 outline-none focus:ring-2 focus:ring-[#91c13e] cursor-pointer">
+                <option value="All">All Supervisors</option>
+                {supervisorOptions.filter(s => s !== 'All').map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold uppercase tracking-wider text-slate-700 outline-none focus:ring-2 focus:ring-[#91c13e] cursor-pointer">
+                <option value="All">All Statuses</option>
+                <option value="Submitted">Submitted</option>
+                <option value="No Submission">No Submission</option>
+              </select>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
