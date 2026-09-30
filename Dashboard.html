@@ -2699,7 +2699,7 @@
             return false;
           }
           const deptVal = (row[opexCol.dept] || "").toString().trim();
-          const VALID_DEPTS = ['se/kg - people services','manila - people service','na - people service','opex','se/kg - payroll','manila - na - people services','anz - people service'];
+          const VALID_DEPTS = ['europe - people services','manila - people service','na - people service','opex','se/kg - payroll','manila - na - people services','anz - people service'];
           const deptLower = deptVal.toLowerCase();
           if (!deptVal || !VALID_DEPTS.some(c => deptLower.includes(c) || c.includes(deptLower))) return false;
           return true;
