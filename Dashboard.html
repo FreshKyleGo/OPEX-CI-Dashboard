@@ -2177,7 +2177,7 @@
                 <option value="All">All Leaders</option>
                 {leadersList.filter(l => l !== 'All').map(l => <option key={l} value={l}>{l}</option>)}
               </select>
-              <select value={statusFilter} onChange={e => setTransitionState(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-slate-700 outline-none focus:ring-2 focus:ring-[#91c13e] cursor-pointer">
+              <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-slate-700 outline-none focus:ring-2 focus:ring-[#91c13e] cursor-pointer">
                 <option value="All">All Statuses</option>
                 {statusesList.filter(s => s !== 'All').map(s => <option key={s} value={s}>{s}</option>)}
               </select>
@@ -2440,8 +2440,22 @@
         });
       }, [processedRows, searchQuery, leaderFilter, statusFilter]);
 
+      // Rows narrowed to the selected leader: drives the Status Distribution panel
+      // and the status dropdown, so statuses follow the leader being viewed.
+      const leaderScopedRows = useMemo(
+        () => leaderFilter === 'All' ? processedRows : processedRows.filter(r => r.leader === leaderFilter),
+        [processedRows, leaderFilter]
+      );
+
       const leadersList = useMemo(() => ['All', ...new Set(processedRows.map(r => r.leader))].sort(), [processedRows]);
-      const statusesList = useMemo(() => ['All', ...new Set(processedRows.map(r => r.status))].sort(), [processedRows]);
+      const statusesList = useMemo(() => {
+        const set = new Set(leaderScopedRows.map(r => r.status));
+        // keep the currently selected status listed so the dropdown never shows a value that isn't an option
+        if (statusFilter !== 'All' && ![...set].some(s => s.toLowerCase().trim() === statusFilter.toLowerCase().trim())) {
+          set.add(statusFilter);
+        }
+        return ['All', ...set].sort();
+      }, [leaderScopedRows, statusFilter]);
 
       const openEditModal = (item) => {
         setEditingItem(item);
@@ -2568,13 +2582,17 @@
             <div className="lg:col-span-5 bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col justify-between">
               <div>
                 <h2 className="text-lg font-black text-[#062115] tracking-tight">Status Distribution</h2>
-                <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-1">Enrollment vs completion segments (click to filter)</p>
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-1">
+                  {leaderFilter === 'All'
+                    ? 'Enrollment vs completion segments (click to filter)'
+                    : leaderFilter + ' — ' + leaderScopedRows.length + ' learners (click to filter)'}
+                </p>
               </div>
               <div className="space-y-4 mt-6 flex-1 flex flex-col justify-center">
                 {['Successful', 'Not enrolled', 'Not yet started', 'On time'].map((statusName, index) => {
-                  const matches = processedRows.filter(r => r.status.toLowerCase().trim() === statusName.toLowerCase().trim());
+                  const matches = leaderScopedRows.filter(r => r.status.toLowerCase().trim() === statusName.toLowerCase().trim());
                   const count = matches.length;
-                  const percent = stats.total > 0 ? Math.round((count / stats.total) * 100) : 0;
+                  const percent = leaderScopedRows.length > 0 ? Math.round((count / leaderScopedRows.length) * 100) : 0;
                   const isCurrentFilter = statusFilter.toLowerCase().trim() === statusName.toLowerCase().trim();
                   const colors = ['bg-[#91c13e]', 'bg-slate-300', 'bg-amber-400', 'bg-indigo-500'];
                   return (
