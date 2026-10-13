@@ -1636,7 +1636,7 @@
               </select>
               <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#0f172a] outline-none focus:ring-2 focus:ring-[#91c13e] cursor-pointer">
                 <option value="All">All Teams</option>
-                {deptsOptions.map(d => <option key={d} value={d}>{d}</option>)}
+                {deptsOptions.filter(d => d !== 'All').map(d => <option key={d} value={d}>{d}</option>)}
               </select>
               <div className="relative flex-1 lg:flex-none">
                 <Icon name="Search" className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
