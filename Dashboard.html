@@ -146,7 +146,8 @@
         ["euriza ann de leon-binarao", "yuri de leon"],
         ["arsenia roque", "arcie roque"],
         ["marie abigail aguirre", "abby aguirre"],
-        ["maj bautista", "marie jillian dominique reyes bautista"]
+        ["maj bautista", "marie jillian dominique reyes bautista"],
+        ["robyn swift", "robyn hulsey"]
       ];
       for (const pair of aliases) {
         if ((cleanA === pair[0] && cleanB === pair[1]) || (cleanA === pair[1] && cleanB === pair[0])) {
@@ -331,6 +332,17 @@
     }
 
     // Helper to align multiple parsed excel sheets into a standardized consolidated row schema
+    // People left out of every view (Headcount, LSS Training, Idea Participation).
+    // Matched with matchNames, so honorifics and known nicknames are handled too.
+    const EXCLUDED_PEOPLE = ['Marie Jillian Dominique Reyes Bautista'];
+    const isExcludedPerson = (name) => EXCLUDED_PEOPLE.some(n => matchNames(name, n));
+
+    // One person known under more than one name (e.g. after a name change). The first
+    // entry is the name they should be shown under; the training sheet is consolidated to it.
+    const SAME_PERSON_GROUPS = [
+      ['Robyn Hulsey', 'Robyn Swift'],
+    ];
+
     function reconcileSpreadsheets(sheetsMap) {
       const sheetNames = Object.keys(sheetsMap);
       const findSheet = (keywords) => {
@@ -422,6 +434,7 @@
         if (!r || !r.length) continue;
         const name = g(r, hCol.name);
         if (!name || String(name).trim() === '' || name === 'DUMMY ENTRY') continue;
+        if (isExcludedPerson(name)) continue;
         const cr = Array(77).fill(null);
         cr[31]=g(r,hCol.leader); cr[32]=g(r,hCol.name); cr[33]=g(r,hCol.status);
         cr[34]=g(r,hCol.workerType); cr[35]=g(r,hCol.jobFamily); cr[36]=g(r,hCol.level);
@@ -430,18 +443,47 @@
         out.push({ row: cr, index_: idx++ });
       }
 
+      const trainingOut = [];
       for (let i = 1; i < trainingRows.length; i++) {
         const r = trainingRows[i];
         if (!r || !r.length) continue;
         const name = g(r, tCol.name);
         if (!name || String(name).trim() === '' || name === 'DUMMY ENTRY' || String(name).startsWith('#')) continue;
+        if (isExcludedPerson(name)) continue;
         const cr = Array(77).fill(null);
         cr[65]=g(r,tCol.leader); cr[66]=g(r,tCol.name); cr[67]=g(r,tCol.empId);
         cr[68]=g(r,tCol.email); cr[69]=g(r,tCol.path); cr[70]=g(r,tCol.hireDate);
         cr[71]=g(r,tCol.enrollDate); cr[72]=g(r,tCol.startDate); cr[73]=g(r,tCol.status);
         cr[74]=g(r,tCol.progress); cr[75]=g(r,tCol.completionDate);
-        out.push({ row: cr, index_: idx++ });
+        trainingOut.push(cr);
       }
+
+      // Someone listed under two names: show them once, under their current name, carrying
+      // the best training record found under either name (most progress, then a completion date).
+      const progressScore = (cr) =>
+        (parseFloat(String(cr[74] == null ? '' : cr[74]).replace('%', '')) || 0) * 10 + (cr[75] ? 1 : 0);
+      SAME_PERSON_GROUPS.forEach(group => {
+        const currentName = group[0];
+        const members = trainingOut.filter(cr => group.some(n => matchNames(cr[66], n)));
+        if (members.length === 0) return;
+        const best = members.reduce((a, b) => progressScore(b) > progressScore(a) ? b : a);
+        // exact current-name record only (honorifics ignored); the alias must not count here
+        const currentRow = members.find(cr => cleanName(cr[66]) === cleanName(currentName)) || null;
+        const merged = best.slice();
+        if (currentRow) {
+          // identity fields (leader, name, id, email, hire date) come from the current-name record
+          [65, 66, 67, 68, 70].forEach(k => {
+            if (currentRow[k] != null && String(currentRow[k]).trim() !== '') merged[k] = currentRow[k];
+          });
+        } else {
+          merged[66] = currentName;
+        }
+        const insertAt = trainingOut.indexOf(members[0]);
+        members.forEach(m => trainingOut.splice(trainingOut.indexOf(m), 1));
+        trainingOut.splice(insertAt, 0, merged);
+      });
+
+      trainingOut.forEach(cr => out.push({ row: cr, index_: idx++ }));
 
       return out;
     }
