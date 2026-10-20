@@ -1583,8 +1583,12 @@
           } else {
             teams[d.dept].closed += 1;
           }
-          teams[d.dept].fte += d.fte;
-          teams[d.dept].savings += d.savings;
+          // Actual = resolved projects only (same rule as the Actual toggle on the KPI cards).
+          // This only changes the FTE / savings figures, never the submitted / resolved counts.
+          if (initiativeTypeFilter === 'Non-CI' || potentialActualFilter === 'Potential' || d.isCompleted) {
+            teams[d.dept].fte += d.fte;
+            teams[d.dept].savings += d.savings;
+          }
         });
         return Object.values(teams).sort((a, b) => {
           if (initiativeTypeFilter === 'Submissions') {
@@ -1598,7 +1602,7 @@
           }
           return b.fte - a.fte;
         });
-      }, [activeCiData, nonCiData, initiativeTypeFilter, analyticsTab]);
+      }, [activeCiData, nonCiData, initiativeTypeFilter, analyticsTab, potentialActualFilter]);
 
       // Submissions view: total submissions per team = active + resolved (closed is never in this data)
       const submissionTotals = useMemo(() => {
@@ -1751,7 +1755,11 @@
               <div className="flex flex-wrap justify-between items-center mb-4 gap-2">
                 <div>
                   <h2 className="text-lg font-black text-[#062115] tracking-tight">Team Performance</h2>
-                  <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-1">{initiativeTypeFilter === 'Submissions' ? submissionTotals.sum + ' submissions · closed excluded' : 'Yield metrics by component'}</p>
+                  <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-1">{initiativeTypeFilter === 'Submissions'
+                    ? submissionTotals.sum + ' submissions · closed excluded'
+                    : (analyticsTab === 'FteSavings' && initiativeTypeFilter === 'CI' && potentialActualFilter === 'Actual')
+                      ? 'Actual yield · resolved projects only'
+                      : 'Yield metrics by component'}</p>
                 </div>
                 <div className="bg-slate-100 p-1 rounded-xl flex gap-1">
                   <button onClick={() => { setAnalyticsTab('Conversion'); setInitiativeTypeFilter(f => f === 'Submissions' ? 'CI' : f); }} className={'px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all ' + (analyticsTab === 'Conversion' && initiativeTypeFilter !== 'Submissions' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600')}>
@@ -1774,6 +1782,9 @@
                 <button onClick={() => setInitiativeTypeFilter('Submissions')} title="Compare submissions across all teams (closed excluded)" className={'text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-xl border transition-all ' + (initiativeTypeFilter === 'Submissions' ? 'bg-[#062115] text-white border-[#062115]' : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100')}>
                   SUBMISSIONS
                 </button>
+                {analyticsTab === 'FteSavings' && initiativeTypeFilter === 'CI' && (
+                  <div className="ml-auto flex items-center">{potActToggle}</div>
+                )}
               </div>
 
               <div className="space-y-4 overflow-y-auto max-h-[290px] pr-2 flex-1 scrollbar-none">
