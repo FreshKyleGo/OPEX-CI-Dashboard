@@ -1570,13 +1570,14 @@
       }, [activeCiData]);
 
       const teamComparison = useMemo(() => {
-        const currentBase = initiativeTypeFilter === 'CI' ? activeCiData : nonCiData;
+        // 'CI' and 'Submissions' both read the non-closed tickets; only 'Non-CI' reads the closed ones
+        const currentBase = initiativeTypeFilter === 'Non-CI' ? nonCiData : activeCiData;
         const teams = {};
         currentBase.forEach(d => {
           if (!teams[d.dept]) {
             teams[d.dept] = { dept: d.dept, submitted: 0, completed: 0, closed: 0, fte: 0, savings: 0 };
           }
-          if (initiativeTypeFilter === 'CI') {
+          if (initiativeTypeFilter !== 'Non-CI') {
             if (d.isSubmitted) teams[d.dept].submitted += 1;
             if (d.isCompleted) teams[d.dept].completed += 1;
           } else {
@@ -1586,6 +1587,9 @@
           teams[d.dept].savings += d.savings;
         });
         return Object.values(teams).sort((a, b) => {
+          if (initiativeTypeFilter === 'Submissions') {
+            return (b.submitted + b.completed) - (a.submitted + a.completed);
+          }
           if (analyticsTab === 'Conversion') {
             if (initiativeTypeFilter === 'CI') {
               return (b.submitted + b.completed) - (a.submitted + a.completed);
@@ -1595,6 +1599,12 @@
           return b.fte - a.fte;
         });
       }, [activeCiData, nonCiData, initiativeTypeFilter, analyticsTab]);
+
+      // Submissions view: total submissions per team = active + resolved (closed is never in this data)
+      const submissionTotals = useMemo(() => {
+        const totals = teamComparison.map(t => t.submitted + t.completed);
+        return { max: totals.length ? Math.max(...totals) : 0, sum: totals.reduce((a, b) => a + b, 0) };
+      }, [teamComparison]);
 
       const maxFteVal = useMemo(() => {
         return d3.max(teamComparison, t => t.fte) || 1;
@@ -1741,25 +1751,28 @@
               <div className="flex flex-wrap justify-between items-center mb-4 gap-2">
                 <div>
                   <h2 className="text-lg font-black text-[#062115] tracking-tight">Team Performance</h2>
-                  <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-1">Yield metrics by component</p>
+                  <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-1">{initiativeTypeFilter === 'Submissions' ? submissionTotals.sum + ' submissions · closed excluded' : 'Yield metrics by component'}</p>
                 </div>
                 <div className="bg-slate-100 p-1 rounded-xl flex gap-1">
-                  <button onClick={() => setAnalyticsTab('Conversion')} className={'px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all ' + (analyticsTab === 'Conversion' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600')}>
+                  <button onClick={() => { setAnalyticsTab('Conversion'); setInitiativeTypeFilter(f => f === 'Submissions' ? 'CI' : f); }} className={'px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all ' + (analyticsTab === 'Conversion' && initiativeTypeFilter !== 'Submissions' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600')}>
                     Conversion
                   </button>
-                  <button onClick={() => setAnalyticsTab('FteSavings')} className={'px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all ' + (analyticsTab === 'FteSavings' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600')}>
+                  <button onClick={() => { setAnalyticsTab('FteSavings'); setInitiativeTypeFilter(f => f === 'Submissions' ? 'CI' : f); }} className={'px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all ' + (analyticsTab === 'FteSavings' && initiativeTypeFilter !== 'Submissions' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600')}>
                     FTE Savings
                   </button>
                 </div>
               </div>
 
-              {/* Local Toggle for Active CI vs Closed logs */}
-              <div className="flex items-center gap-2 mb-4 border-b border-slate-100 pb-3">
+              {/* Local Toggle for Active CI vs Closed logs vs Submissions comparison */}
+              <div className="flex flex-wrap items-center gap-2 mb-4 border-b border-slate-100 pb-3">
                 <button onClick={() => setInitiativeTypeFilter('CI')} className={'text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-xl border transition-all ' + (initiativeTypeFilter === 'CI' ? 'bg-[#062115] text-white border-[#062115]' : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100')}>
                   ACTIVE CI
                 </button>
                 <button onClick={() => setInitiativeTypeFilter('Non-CI')} className={'text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-xl border transition-all ' + (initiativeTypeFilter === 'Non-CI' ? 'bg-[#062115] text-white border-[#062115]' : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100')}>
                   NON CI (CLOSED PROJECTS)
+                </button>
+                <button onClick={() => setInitiativeTypeFilter('Submissions')} title="Compare submissions across all teams (closed excluded)" className={'text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-xl border transition-all ' + (initiativeTypeFilter === 'Submissions' ? 'bg-[#062115] text-white border-[#062115]' : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100')}>
+                  SUBMISSIONS
                 </button>
               </div>
 
@@ -1768,7 +1781,12 @@
                   let pct = 0;
                   let details = "";
                   let rateLabel = "";
-                  if (analyticsTab === 'Conversion') {
+                  if (initiativeTypeFilter === 'Submissions') {
+                    const total = item.submitted + item.completed;
+                    pct = submissionTotals.max > 0 ? (total / submissionTotals.max) * 100 : 0;
+                    details = total + (total === 1 ? " submission" : " submissions");
+                    rateLabel = (submissionTotals.sum > 0 ? Math.round((total / submissionTotals.sum) * 100) : 0) + "% of all";
+                  } else if (analyticsTab === 'Conversion') {
                     if (initiativeTypeFilter === 'CI') {
                       const total = item.submitted + item.completed;
                       pct = total > 0 ? (item.completed / total) * 100 : 0;
@@ -2472,15 +2490,33 @@
         setStatusFilter(statusFilter === status ? 'All' : status);
       };
 
+      const [progressSortAsc, setProgressSortAsc] = useState(null); // null = sheet order, true = low-to-high, false = high-to-low
+
       const filteredRows = useMemo(() => {
-        return processedRows.filter(r => {
+        const rows = processedRows.filter(r => {
           const q = searchQuery.toLowerCase();
           const matchSearch = q === '' || r.name.toLowerCase().includes(q) || r.empId.toLowerCase().includes(q) || r.leader.toLowerCase().includes(q);
           const matchLeader = leaderFilter === 'All' || r.leader === leaderFilter;
           const matchStatus = statusFilter === 'All' || r.status.toLowerCase().trim() === statusFilter.toLowerCase().trim();
           return matchSearch && matchLeader && matchStatus;
         });
-      }, [processedRows, searchQuery, leaderFilter, statusFilter]);
+        if (progressSortAsc === null) return rows;
+        return [...rows].sort((a, b) => progressSortAsc ? a.progress - b.progress : b.progress - a.progress);
+      }, [processedRows, searchQuery, leaderFilter, statusFilter, progressSortAsc]);
+
+      // "X of Y completed" for whoever is currently in scope (leader + search). The status filter is
+      // deliberately left out, otherwise picking e.g. "Not enrolled" would always read 0 of N.
+      const scopeStats = useMemo(() => {
+        const q = searchQuery.toLowerCase();
+        const scope = processedRows.filter(r => {
+          const matchSearch = q === '' || r.name.toLowerCase().includes(q) || r.empId.toLowerCase().includes(q) || r.leader.toLowerCase().includes(q);
+          const matchLeader = leaderFilter === 'All' || r.leader === leaderFilter;
+          return matchSearch && matchLeader;
+        });
+        const completed = scope.filter(r => r.status.toLowerCase().trim() === 'successful').length;
+        const total = scope.length;
+        return { completed, total, pct: total > 0 ? ((completed / total) * 100).toFixed(1) : '0.0' };
+      }, [processedRows, searchQuery, leaderFilter]);
 
       // Rows narrowed to the selected leader: drives the Status Distribution panel
       // and the status dropdown, so statuses follow the leader being viewed.
@@ -2674,6 +2710,18 @@
                 <option value="All">All Statuses</option>
                 {statusesList.filter(s => s !== 'All').map(s => <option key={s} value={s}>{s}</option>)}
               </select>
+              <select
+                value={progressSortAsc === null ? '' : (progressSortAsc ? 'asc' : 'desc')}
+                onChange={e => setProgressSortAsc(e.target.value === '' ? null : e.target.value === 'asc')}
+                className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold uppercase tracking-wider text-slate-700 outline-none focus:ring-2 focus:ring-[#91c13e] cursor-pointer"
+              >
+                <option value="">Sort By</option>
+                <option value="desc">Progress — High to Low</option>
+                <option value="asc">Progress — Low to High</option>
+              </select>
+              <span className="bg-emerald-50 text-[#062115] text-xs font-black uppercase tracking-wider px-3 py-2 rounded-xl">
+                {scopeStats.completed} of {scopeStats.total} completed ({scopeStats.pct}%)
+              </span>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
